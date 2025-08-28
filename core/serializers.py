@@ -8,7 +8,8 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.User
-        fields = ['username', 'password', 'confirm_password', 'email', 'role']
+        fields = ['id', 'username', 'email', 'role', 'password', 'confirm_password']
+        extra_kwargs = {'id': {'read_only': True}}
 
     def validate(self, attrs):
         if attrs.get('password') != attrs.get('confirm_password'):
@@ -20,7 +21,13 @@ class UserSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         # remove confirm_password before creating user
         validated_data.pop('confirm_password')
+        role= validated_data.get('role')
+        
+        # Create the user
         user = models.User.objects.create_user(**validated_data)
+        group,created= models.Group.objects.get_or_create(name=role.capitalize())
+        user.groups.add(group)
+        
         return user
     
 class UserLoginSerializer(serializers.Serializer):
