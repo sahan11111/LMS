@@ -17,7 +17,6 @@ class StatementSplitter:
     def _reset(self):
         """Set the filter attributes to its default values"""
         self._in_declare = False
-        self._in_case = False
         self._is_create = False
         self._begin_depth = 0
 
@@ -59,18 +58,16 @@ class StatementSplitter:
                 return 1
             return 0
 
-        # BEGIN and CASE/WHEN both end with END
+        # Should this respect a preceding BEGIN?
+        # In CASE ... WHEN ... END this results in a split level -1.
+        # Would having multiple CASE WHEN END and a Assignment Operator
+        # cause the statement to cut off prematurely?
         if unified == 'END':
-            if not self._in_case:
-                self._begin_depth = max(0, self._begin_depth - 1)
-            else:
-                self._in_case = False
+            self._begin_depth = max(0, self._begin_depth - 1)
             return -1
 
         if (unified in ('IF', 'FOR', 'WHILE', 'CASE')
                 and self._is_create and self._begin_depth > 0):
-            if unified == 'CASE':
-                self._in_case = True
             return 1
 
         if unified in ('END IF', 'END FOR', 'END WHILE'):
