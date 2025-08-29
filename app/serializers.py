@@ -1,6 +1,5 @@
 from rest_framework import serializers
 from . import models
-from core.serializers import UserSerializer
 
 # Course Serializer
 class CourseSerializer(serializers.ModelSerializer):
@@ -18,24 +17,26 @@ class CourseSerializer(serializers.ModelSerializer):
 
     def validate_created_by(self, value):
         user = self.context['request'].user
-
+        
+        # Admin can assign freely
         if user.groups.filter(name="Admin").exists(): 
             return value
+        # Instructor can only assign themselves
         elif user.groups.filter(name="Instructor").exists():
             if value != user:
                 raise serializers.ValidationError("Instructors can only assign themselves as the course creator.")
             return value
-        raise serializers.ValidationError("You are not allowed to create courses.")
+        raise serializers.ValidationError("You are not allowed to create courses.") # Students/Sponsors cannot create courses
 
     def create(self, validated_data):
         user = self.context['request'].user
         if 'created_by' not in validated_data:
-            validated_data['created_by'] = user
+            validated_data['created_by'] = user # Instructor auto-assign
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
         user = self.context['request'].user
-        if 'created_by' in validated_data and not user.groups.filter(name="Admin").exists():
+        if 'created_by' in validated_data and not user.groups.filter(name="Admin").exists(): #  Prevent non-admin changing creator
             validated_data.pop('created_by', None)
         return super().update(instance, validated_data)
 
