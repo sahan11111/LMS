@@ -22,7 +22,7 @@ class UserViewSet(GenericViewSet,CreateModelMixin):
         return super().get_serializer_class()
 
 
-    @action(detail=False, methods=['get'], url_path='detail')
+    @action(detail=False, methods=['get'], url_path='detail', permission_classes=[IsAuthenticated])
     def user_detail(self, request):
         serializer = self.get_serializer(request.user)
         return Response(serializer.data)
@@ -44,7 +44,8 @@ class UserViewSet(GenericViewSet,CreateModelMixin):
             return Response({
                 'id': user.id,
                 'username': user.username,
-                'role': user.role,
+                'role': user.role,  # or list(user.groups.values_list("name", flat=True))
+                'groups':list(user.groups.values_list("name", flat=True)),
                 'token': token.key
             })
 

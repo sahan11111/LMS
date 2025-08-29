@@ -14,40 +14,40 @@ class CourseViewSet(viewsets.ModelViewSet):
     serializer_class = CourseSerializer
 
     def get_permissions(self):
-        """
-        - Admin → Full access
-        - Instructor → Create/Update/Delete own courses
-        - Student & Sponsor → Read-only
-        """
-        if self.request.user.is_authenticated:
-            if self.request.user.groups.filter(name="Admin").exists():
-                permission_classes = [IsAdmin]
-            else:
-                permission_classes = [IsInstructorOrReadOnly]
+        user = self.request.user
+        
+        # Admin has full access 
+        if user.is_authenticated and user.groups.filter(name="Admin").exists():
+            permission_classes = [IsAdmin]
+            
+        # Instructor can create/update/delete own courses 
+        elif user.is_authenticated and user.groups.filter(name="Instructor").exists():
+            permission_classes = [IsInstructorOrReadOnly]
+            
+        # Students & Sponsors can read-only 
         else:
-            # Unauthenticated users = Read-only
-            permission_classes = [IsAuthenticatedOrReadOnly]
-
-        return [permission() for permission in permission_classes]
+            permission_classes = [ReadOnly]
+            '''# Unauthenticated users = Read-only
+            # permission_classes = [IsAuthenticatedOrReadOnly]'''
+        return [p() for p in permission_classes]
 
     def get_queryset(self):
-        """
-        Role-based filtering:
-        - Admin → all courses
-        - Instructor → only own courses
-        - Student/Sponsor → all available courses (read-only)
-        """
         user = self.request.user
-
-        # Prevent error during Swagger schema generation
+        
+        # Swagger fake view or unauthenticated users see no enrollments to avoid errors and protect data
         if getattr(self, 'swagger_fake_view', False):
             return Course.objects.none()
-
-        if user.is_authenticated and user.groups.filter(name="Admin").exists():
+        
+         # Admin sees all
+        if user.is_authenticated and user.groups.filter(name="Admin").exists(): 
             return Course.objects.all()
-        elif user.is_authenticated and user.groups.filter(name="Instructor").exists():
+         # Instructor sees own courses only
+         
+        elif user.is_authenticated and user.groups.filter(name="Instructor").exists(): 
             return Course.objects.filter(created_by=user)
-        else:
+        
+        # Students & Sponsors see all (read-only)
+        else:  
             return Course.objects.all()
 
 
@@ -67,7 +67,7 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
 
         # If user is Instructor, allow instructor-specific permissions (CRUD on own courses)
         elif user.groups.filter(name="Instructor").exists():
-            return [IsInstructorOrReadOnly()]
+            return [IsInstructor()]
 
         # If user is Student, allow student-specific permissions
         elif user.role == 'student':
@@ -178,7 +178,7 @@ class SubmissionViewSet(viewsets.ModelViewSet):
         if user.groups.filter(name="Admin").exists():
             return [IsAdmin()]
 
-        # Instructor can manage submissions related to their courses
+        # Instructor can manage submissions for own courses
         elif user.groups.filter(name="Instructor").exists():
             return [IsInstructorOrReadOnly()]
 

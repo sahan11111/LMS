@@ -10,6 +10,7 @@ router.register('Sponsor',views.SponsorViewSet)
 router.register('Sponsorship',views.SponsorshipViewSet)
 router.register('Notification',views.NotificationViewSet)
 router.register('EmailLog',views.EmailLogViewSet)
+router.register('Dashboard',views.DashboardViewSet,basename='dashboard')
 urlpatterns = [
     path('', include(router.urls)),
 ]

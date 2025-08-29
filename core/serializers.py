@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from . import models
+from django.contrib.auth.models import Group
 
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
@@ -21,13 +22,17 @@ class UserSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         # remove confirm_password before creating user
         validated_data.pop('confirm_password')
-        role= validated_data.get('role')
-        
-        # Create the user
+        role = validated_data.get('role')
+
+        # Create user
         user = models.User.objects.create_user(**validated_data)
-        group,created= models.Group.objects.get_or_create(name=role.capitalize())
+        user.role = role
+        user.save()
+
+        # Assign user to the corresponding group
+        group, _ = Group.objects.get_or_create(name=role.capitalize())
         user.groups.add(group)
-        
+
         return user
     
 class UserLoginSerializer(serializers.Serializer):
