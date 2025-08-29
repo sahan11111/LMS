@@ -135,3 +135,36 @@ class SubmissionSerializer(serializers.ModelSerializer):
         if value.role != 'student':
             raise serializers.ValidationError("Only users with the student role can submit assessments.")
         return value
+    
+class SponsorSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.Sponsor
+        fields = '__all__'
+        
+        # fields = ['id', 'user', 'company_name', 'sponsorship_level']
+    
+class SponsorshipSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.Sponsorship
+        fields = ['id', 'sponsor', 'student', 'amount', 'status', 'utilization', 'created_at']
+    
+    def validate_sponsor(self, value):
+        if value.user.role != 'sponsor':
+            raise serializers.ValidationError("The selected user is not a sponsor.")
+        return value
+
+    def validate_student(self, value):
+        if value.role != 'student':
+            raise serializers.ValidationError("The selected user is not a student.")
+        return value
+    
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.Notification
+        fields = ['id', 'user', 'message', 'type', 'is_read', 'created_at']
+    
+class EmailLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.EmailLog
+        fields = '__all__'
+

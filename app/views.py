@@ -1,5 +1,6 @@
 from django.shortcuts import render
 from rest_framework import viewsets
+from rest_framework.response import Response
 from .models import *
 from .serializers import *
 from rest_framework.permissions import IsAuthenticated
@@ -217,3 +218,173 @@ class SubmissionViewSet(viewsets.ModelViewSet):
 
         #  Default no data
         return Submission.objects.none()
+    
+    
+class SponsorViewSet(viewsets.ModelViewSet):
+    queryset = Sponsor.objects.all()
+    serializer_class = SponsorSerializer
+
+    def get_permissions(self):
+        user = self.request.user
+        # Default permission for unauthenticated users
+        if not user.is_authenticated:
+            return [IsAuthenticated()]
+
+        # Admin full access
+        if user.groups.filter(name="Admin").exists():
+            return [IsAdmin()]
+
+        # Sponsors can manage their own sponsorships
+        elif user.role == 'sponsor':
+            return [IsSponsor()]
+
+        # Instructors and Students typically don’t manage sponsorships
+        elif user.groups.filter(name="Instructor").exists() or user.role == 'student':
+            return [IsAuthenticatedOrReadOnly()]
+
+        # Default fallback permission
+        return [IsAuthenticated()]
+
+    def get_queryset(self):
+        user = self.request.user
+
+        # No data for swagger or unauthenticated
+        if getattr(self, 'swagger_fake_view', False) or not user.is_authenticated:
+            return Sponsor.objects.none()
+
+        # Admin sees all sponsorships
+        if user.groups.filter(name="Admin").exists():
+            return self.queryset.all()
+
+        # Sponsors see only their own sponsorships
+        if user.role == 'sponsor':
+            return self.queryset.filter(sponsor=user)
+
+        # Instructors and Students typically don’t see sponsorships
+        if user.groups.filter(name="Instructor").exists() or user.role == 'student':
+            return Sponsor.objects.none()
+
+        # Default no data
+        return Sponsor.objects.none()
+    
+class SponsorshipViewSet(viewsets.ModelViewSet):
+    queryset = Sponsorship.objects.all()
+    serializer_class = SponsorshipSerializer
+
+    def get_permissions(self):
+        user = self.request.user
+        # Default permission for unauthenticated users
+        if not user.is_authenticated:
+            return [IsAuthenticated()]
+
+        # Admin full access
+        if user.groups.filter(name="Admin").exists():
+            return [IsAdmin()]
+
+        # Sponsors can manage sponsorships they created
+        elif user.role == 'sponsor':
+            return [IsSponsor()]
+
+        # Instructors and Students typically don’t manage sponsorships
+        elif user.groups.filter(name="Instructor").exists() or user.role == 'student':
+            return [IsAuthenticatedOrReadOnly()]
+
+        # Default fallback permission
+        return [IsAuthenticated()]
+
+    def get_queryset(self):
+        user = self.request.user
+
+        # No data for swagger or unauthenticated
+        if getattr(self, 'swagger_fake_view', False) or not user.is_authenticated:
+            return Sponsorship.objects.none()
+
+        # Admin sees all sponsorships
+        if user.groups.filter(name="Admin").exists():
+            return self.queryset.all()
+
+        # Sponsors see only sponsorships they created
+        if user.role == 'sponsor':
+            return self.queryset.filter(sponsor=user)
+
+        # Instructors and Students typically don’t see sponsorships
+        if user.groups.filter(name="Instructor").exists() or user.role == 'student':
+            return Sponsorship.objects.none()
+
+        # Default no data
+        return Sponsorship.objects.none()
+    
+class DashboardViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request):
+        user = request.user
+        data = {}
+
+        if user.groups.filter(name="Admin").exists():
+            data['total_users'] = User.objects.count()
+            data['total_courses'] = Course.objects.count()
+            data['total_enrollments'] = Enrollment.objects.count()
+            data['total_assessments'] = Assessment.objects.count()
+            data['total_submissions'] = Submission.objects.count()
+            data['total_sponsors'] = Sponsor.objects.count()
+            data['total_sponsorships'] = Sponsorship.objects.count()
+
+        elif user.groups.filter(name="Instructor").exists():
+            data['my_courses'] = Course.objects.filter(created_by=user).count()
+            data['my_enrollments'] = Enrollment.objects.filter(course__created_by=user).count()
+            data['my_assessments'] = Assessment.objects.filter(course__created_by=user).count()
+            data['my_submissions'] = Submission.objects.filter(assessment__course__created_by=user).count()
+
+        elif user.role == 'student':
+            data['my_enrollments'] = Enrollment.objects.filter(student=user).count()
+            data['my_courses'] = Course.objects.filter(enrollment__student=user).distinct().count()
+            data['my_assessments'] = Assessment.objects.filter(course__enrollment__student=user).distinct().count()
+            data['my_submissions'] = Submission.objects.filter(student=user).count()
+
+        elif user.role == 'sponsor':
+            sponsored_students = User.objects.filter(sponsorship__sponsor__user=user).distinct()
+            data['sponsored_students'] = sponsored_students.count()
+            data['sponsorships'] = Sponsorship.objects.filter(sponsor__user=user).count()
+
+        return Response(data)
+    
+
+
+class NotificationViewSet(viewsets.ModelViewSet):
+    queryset = Notification.objects.all()
+    serializer_class = NotificationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+
+        # No data for swagger or unauthenticated
+        if getattr(self, 'swagger_fake_view', False) or not user.is_authenticated:
+            return Notification.objects.none()
+
+        # Admin sees all notifications
+        if user.groups.filter(name="Admin").exists():
+            return self.queryset.all()
+
+        # Users see only their own notifications
+        return self.queryset.filter(user=user)
+    
+class EmailLogViewSet(viewsets.ModelViewSet):
+    queryset = EmailLog.objects.all()
+    serializer_class = EmailLogSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+
+        # No data for swagger or unauthenticated
+        if getattr(self, 'swagger_fake_view', False) or not user.is_authenticated:
+            return EmailLog.objects.none()
+
+        # Admin sees all email logs
+        if user.groups.filter(name="Admin").exists():
+            return self.queryset.all()
+
+        # Users see only their own email logs
+        return self.queryset.filter(user=user)

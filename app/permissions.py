@@ -2,14 +2,23 @@ from rest_framework.permissions import BasePermission, SAFE_METHODS
 
 
 class IsStudent(BasePermission):
+    """ Permissions for Students """
     def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.role == 'student'
+        return (
+            request.user 
+            and request.user.is_authenticated 
+            and request.user.groups.filter(name="Student").exists()
+        )
 
 
 class IsSponsor(BasePermission):
+    """ Permissions for Sponsors """
     def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.role == 'sponsor'
-    
+        return (
+            request.user 
+            and request.user.is_authenticated 
+            and request.user.groups.filter(name="Sponsor").exists()
+        )
 
 
 class IsAdmin(BasePermission):
@@ -24,9 +33,9 @@ class IsAdmin(BasePermission):
 
 class IsInstructorOrReadOnly(BasePermission):
     """
-    Instructors can create and manage their own courses.
-    Students & Sponsors only have read-only access.
-    Admin has full access.
+    - Instructors can create and manage their own courses.
+    - Students & Sponsors only have read-only access.
+    - Admin has full access.
     """
     def has_permission(self, request, view):
         # Everyone can view courses
