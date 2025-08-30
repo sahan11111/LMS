@@ -148,6 +148,19 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
 }
+
+# Mail send garna lai yo setup garna parxa
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = os.getenv('EMAIL_HOST')
+EMAIL_USE_TLS = True
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '2525'))
+# EMAIL_PORT = int(os.getenv('EMAIL_PORT'))
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
+
+# Yestari email rakhem vani hamle purai project ma eutai email use garna payinxa
+SENDER_EMAIL_USER = os.getenv('SENDER_EMAIL_USER')
+
 SWAGGER_SETTINGS = {
     # 'SECURITY_DEFINITIONS': {
     #     'Bearer': {

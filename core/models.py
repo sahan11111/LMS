@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser,Group,Permission
+from .managers import UserManager
 
 # Create your models here.
 
@@ -12,3 +13,9 @@ class User(AbstractUser):
         ('sponsor', 'Sponsor'),
     ]
     role = models.CharField(max_length=20, choices=ROLE_CHOICES)
+    email=models.EmailField(unique=True)
+    otp = models.CharField(max_length=255, null=True)
+    USERNAME_FIELD = "email"
+    REQUIRED_FIELDS=[]
+    
+    objects=UserManager()
