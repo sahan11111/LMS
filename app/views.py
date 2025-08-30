@@ -270,21 +270,21 @@ class SponsorViewSet(viewsets.ModelViewSet):
 
         # Swagger view / unauthenticated → no data
         if getattr(self, 'swagger_fake_view', False) or not user.is_authenticated:
-            return Sponsorship.objects.none()
+            return Sponsor.objects.none()
 
-        # Admin → all sponsorships
+        # Admin → all Sponsors
         if user.groups.filter(name="Admin").exists():
-            return Sponsorship.objects.all()
+            return Sponsor.objects.all()
 
-        # Sponsor → only their sponsorships
+        # Sponsor → only their Sponsors
         if user.groups.filter(name="Sponsor").exists():
-            return Sponsorship.objects.filter(sponsor=user)
+            return Sponsor.objects.filter(sponsor=user)
 
         # Instructor/Student → no access
-        return Sponsorship.objects.none()
+        return Sponsor.objects.none()
 
     def perform_create(self, serializer):
-        """Auto-assign sponsor when creating a sponsorship."""
+        """Auto-assign sponsor when creating a Sponsor."""
         user = self.request.user
 
         if user.groups.filter(name="Sponsor").exists():
@@ -308,7 +308,7 @@ class SponsorshipViewSet(viewsets.ModelViewSet):
             return [IsSponsor()]
 
         # Instructors and Students typically don’t manage sponsorships
-        elif user.groups.filter(name="Instructor").exists() or user.role == 'student':
+        elif user.groups.filter(name="Instructor").exists() or user.groups.filter(name="Student").exists():
             return [IsAuthenticatedOrReadOnly()]
 
         # Default fallback permission
