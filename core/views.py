@@ -1,17 +1,36 @@
-from rest_framework import viewsets
+from django.shortcuts import get_object_or_404, render
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.mixins import CreateModelMixin,ListModelMixin
 from rest_framework.viewsets import GenericViewSet 
 from . import models, serializers
 from django.contrib.auth import get_user_model,authenticate
+from drf_yasg.utils import swagger_auto_schema
 from rest_framework.authtoken.models import Token
 from rest_framework.permissions import AllowAny, IsAuthenticated
+
+User = get_user_model()
+
 class UserViewSet(GenericViewSet,CreateModelMixin):
     queryset = models.User.objects.all()  # Required for ModelViewSet
     serializer_class = serializers.UserSerializer #Default for registering user
+    
+    # This view is for user verification
+    @swagger_auto_schema(
+        methods=['put'],
+        request_body=serializers.UserVerificationSerializer
+    )
+    @action(methods=['put'],detail=False)
+    def verification(self, request):
+        user = get_object_or_404(User, email=request.data.get('email'))
+        serializer = serializers.UserVerificationSerializer(user, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({
+            'details':'User has been successfully verified.'
+        })
     def get_permissions(self):
-        if self.action in ['create', 'login']:
+        if self.action in ['create', 'login', 'verification']:
             return [AllowAny()]
         return [IsAuthenticated()]
 
@@ -32,18 +51,20 @@ class UserViewSet(GenericViewSet,CreateModelMixin):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        username = serializer.validated_data.get('username')
+        email = serializer.validated_data.get('email')
         password = serializer.validated_data.get('password')
         role = serializer.validated_data.get('role')
         
-        user=authenticate(username=username,password=password)
+        user=authenticate(username=email,password=password)
         
-        if user and user.role == role: 
+        if user and user.role == role:
+            if not user.is_active:
+                return Response({'error': 'User is not verified yet'}, status=403)
         # get_or_create le k garxa vanda: if token pailai xa vani get garxa ra yedi xaina vani create garxa. 'create' matra garyo vani tesle harek time create garxa so we use get_or_create
             token, _ = Token.objects.get_or_create(user=user)
             return Response({
                 'id': user.id,
-                'username': user.username,
+                'email': user.email,
                 'role': user.role,  # or list(user.groups.values_list("name", flat=True))
                 'groups':list(user.groups.values_list("name", flat=True)),
                 'token': token.key
