@@ -42,6 +42,7 @@ class CourseSerializer(serializers.ModelSerializer):
 
 # Enrollment Serializer
 class EnrollmentSerializer(serializers.ModelSerializer):
+    progress = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=False)  
     class Meta:
         model = models.Enrollment
         fields = ['id', 'student', 'course', 'status', 'progress']

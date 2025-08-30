@@ -2,7 +2,9 @@ from rest_framework.permissions import BasePermission, SAFE_METHODS
 
 # Admin Permission
 class IsAdmin(BasePermission):
-    """ Full access for Admins """
+    """
+    Allows access only to Admin group users.
+    """
     def has_permission(self, request, view):
         return request.user and request.user.is_authenticated and request.user.groups.filter(name="Admin").exists()
 
@@ -10,7 +12,7 @@ class IsAdmin(BasePermission):
 class IsInstructor(BasePermission):
     """ Full access for Instructors """
     def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.groups.filter(name="Instructor").exists()
+        return request.user and request.user.is_authenticated and request.user.groups.filter(name="Instructor").exists() 
 
 # Instructor or Read-Only
 class IsInstructorOrReadOnly(BasePermission):
@@ -35,13 +37,13 @@ class IsInstructorOrReadOnly(BasePermission):
 class IsStudent(BasePermission):
     """ Only students can enroll, submit assignments, and view own progress """
     def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.groups.filter(name="Student").exists()
+        return request.user and request.user.is_authenticated and request.user.groups.filter(name="Student").exists() 
 
 # Sponsor Permission
 class IsSponsor(BasePermission):
     """ Only sponsors can create sponsorships and view sponsored students """
     def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.groups.filter(name="Sponsor").exists()
+        return request.user and request.user.is_authenticated and request.user.groups.filter(name="Sponsor").exists() 
 
 # Read-Only for everyone
 class ReadOnly(BasePermission):

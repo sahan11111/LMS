@@ -7,7 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from .permissions import *
 from rest_framework.permissions import AllowAny
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
-
+from rest_framework.exceptions import PermissionDenied
 
 class CourseViewSet(viewsets.ModelViewSet):
     queryset = Course.objects.all()
@@ -54,62 +54,69 @@ class CourseViewSet(viewsets.ModelViewSet):
 class EnrollmentViewSet(viewsets.ModelViewSet):
     queryset = Enrollment.objects.all()
     serializer_class = EnrollmentSerializer
+    permission_classes = [IsAuthenticated]  
 
     def get_permissions(self):
         user = self.request.user
-        #  If user is not authenticated, allow only authenticated permission (can be changed to AllowAny)
-        if not user.is_authenticated:
-            return [IsAuthenticated()]  
 
-        # Check if user is Admin, grant full admin permissions
+        # Admin → full access to all enrollments
         if user.groups.filter(name="Admin").exists():
             return [IsAdmin()]
 
-        # If user is Instructor, allow instructor-specific permissions (CRUD on own courses)
+        # Instructor → manage enrollments for their own courses
         elif user.groups.filter(name="Instructor").exists():
             return [IsInstructor()]
-
-        # If user is Student, allow student-specific permissions
-        elif user.role == 'student':
+        
+        # Student → view and create their own enrollments
+        elif user.groups.filter(name="Student").exists():
             return [IsStudent()]
-
-        # If user is Sponsor, allow sponsor-specific permissions
-        elif user.role == 'sponsor':
+        
+        # Sponsor → view enrollments of their sponsored students
+        elif user.groups.filter(name="Sponsor").exists():
             return [IsSponsor()]
 
-        # Default fallback permission
         return [IsAuthenticated()]
 
     def get_queryset(self):
         user = self.request.user
-        
-        # Swagger fake view or unauthenticated users see no enrollments to avoid errors and protect data
+
+        # Swagger view / unauthenticated → no data
         if getattr(self, 'swagger_fake_view', False) or not user.is_authenticated:
             return Enrollment.objects.none()
 
-        # Admin can see all enrollments
+        # Admin → all enrollments
         if user.groups.filter(name="Admin").exists():
-            return self.queryset.all()
+            return Enrollment.objects.all()
 
-        # Instructor sees enrollments related to their courses only
+        # Instructor → enrollments only for their own courses
         if user.groups.filter(name="Instructor").exists():
-            return self.queryset.filter(course__created_by=user)
+            return Enrollment.objects.filter(course__created_by=user)
 
-        #  Student sees only their own enrollments
-        if user.role == 'student':
-            return self.queryset.filter(student=user)
+        # Student → only their own enrollments
+        if user.groups.filter(name="Student").exists():
+            return Enrollment.objects.filter(student=user)
 
-        #  Sponsor sees enrollments of students they sponsor (adjust 'sponsored_by' accordingly)
-        if user.role == 'sponsor':
-            return self.queryset.filter(student__sponsored_by=user)
+        # Sponsor → enrollments of students they sponsor
+        if user.groups.filter(name="Sponsor").exists():
+            return Enrollment.objects.filter(student__sponsorship__sponsor__user=user).distinct()
 
-        #  If none of above, return no enrollments
         return Enrollment.objects.none()
+
+    def perform_create(self, serializer):
+        """Auto-assign student when creating an enrollment."""
+        user = self.request.user
+
+        # Only students can enroll
+        if user.groups.filter(name="Student").exists():
+            serializer.save(student=user)
+        else:
+            raise PermissionDenied("Only students can enroll in courses.")
 
 
 class AssessmentViewSet(viewsets.ModelViewSet):
     queryset = Assessment.objects.all()
     serializer_class = AssessmentSerializer
+    permission_classes = [IsAuthenticated | ReadOnly]  # default
 
     def get_permissions(self):
         user = self.request.user
@@ -123,15 +130,7 @@ class AssessmentViewSet(viewsets.ModelViewSet):
 
         # Instructor can create/manage own assessments
         elif user.groups.filter(name="Instructor").exists():
-            return [IsInstructorOrReadOnly()]
-
-        # Student can view assessments for courses they are enrolled in
-        elif user.role == 'student':
-            return [IsStudent()]
-
-        # Sponsor permission (usually no direct access to assessments)
-        elif user.role == 'sponsor':
-            return [IsSponsor()]
+            return [IsInstructor()]
 
         # Default fallback
         return [IsAuthenticated()]
@@ -152,27 +151,35 @@ class AssessmentViewSet(viewsets.ModelViewSet):
             return self.queryset.filter(course__created_by=user)
 
         #  Student sees assessments only in their enrolled courses
-        if user.role == 'student':
+        if user.groups.filter(name="Student").exists():
             enrolled_courses = Enrollment.objects.filter(student=user).values_list('course', flat=True)
             return self.queryset.filter(course__in=enrolled_courses)
-
         #  Sponsors don’t see assessments by default
-        if user.role == 'sponsor':
+        if user.groups.filter(name="Sponsor").exists():
             return Assessment.objects.none()
 
         #  Default no data
         return Assessment.objects.none()
 
+    def perform_create(self, serializer):
+        user = self.request.user
 
+        if user.groups.filter(name="Admin").exists():
+            serializer.save()
+        elif user.groups.filter(name="Instructor").exists():
+            course = serializer.validated_data.get("course")
+            if course.created_by != user:
+                raise PermissionDenied("You can only add assessments to your own courses.")
+            serializer.save()
+        else:
+            raise PermissionDenied("Only Admins or Instructors can create assessments.")
 class SubmissionViewSet(viewsets.ModelViewSet):
     queryset = Submission.objects.all()
     serializer_class = SubmissionSerializer
+    permission_classes = [IsAuthenticated]  # default
 
     def get_permissions(self):
         user = self.request.user
-        #  Default permission for unauthenticated users
-        if not user.is_authenticated:
-            return [IsAuthenticated()]
 
         # Admin full access
         if user.groups.filter(name="Admin").exists():
@@ -194,41 +201,54 @@ class SubmissionViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated()]
 
     def get_queryset(self):
+            user = self.request.user
+
+            # Swagger view / unauthenticated → no data
+            if getattr(self, 'swagger_fake_view', False) or not user.is_authenticated:
+                return Submission.objects.none()
+
+            # Admin → all submissions
+            if user.groups.filter(name="Admin").exists():
+                return Submission.objects.all()
+
+            # Instructor → submissions only for assessments in their courses
+            if user.groups.filter(name="Instructor").exists():
+                return Submission.objects.filter(assessment__course__created_by=user)
+
+            # Student → only their own submissions
+            if user.groups.filter(name="Student").exists():
+                return Submission.objects.filter(student=user)
+
+            # Sponsor → no submissions
+            if user.groups.filter(name="Sponsor").exists():
+                return Submission.objects.none()
+
+            return Submission.objects.none()
+
+    def perform_create(self, serializer):
+        """Auto-assign student when creating a submission."""
         user = self.request.user
 
-        # No data for swagger or unauthenticated
-        if getattr(self, 'swagger_fake_view', False) or not user.is_authenticated:
-            return Submission.objects.none()
+        if not user.groups.filter(name="Student").exists():
+            raise PermissionDenied("Only students can submit assessments.")
 
-        # Admin sees all submissions
-        if user.groups.filter(name="Admin").exists():
-            return self.queryset.all()
+        assessment = serializer.validated_data.get("assessment")
 
-        # Instructor sees submissions for assessments in their courses
-        if user.groups.filter(name="Instructor").exists():
-            return self.queryset.filter(assessment__course__created_by=user)
+        # Validate: student must be enrolled in this course
+        is_enrolled = Enrollment.objects.filter(student=user, course=assessment.course).exists()
+        if not is_enrolled:
+            raise PermissionDenied("You must be enrolled in the course to submit.")
 
-        #  Student sees only their submissions
-        if user.role == 'student':
-            return self.queryset.filter(student=user)
-
-        #  Sponsors don’t see submissions
-        if user.role == 'sponsor':
-            return Submission.objects.none()
-
-        #  Default no data
-        return Submission.objects.none()
+        serializer.save(student=user)
     
     
 class SponsorViewSet(viewsets.ModelViewSet):
     queryset = Sponsor.objects.all()
     serializer_class = SponsorSerializer
-
+    permission_classes = [IsAuthenticated]  # default
+    
     def get_permissions(self):
         user = self.request.user
-        # Default permission for unauthenticated users
-        if not user.is_authenticated:
-            return [IsAuthenticated()]
 
         # Admin full access
         if user.groups.filter(name="Admin").exists():
@@ -248,34 +268,36 @@ class SponsorViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
 
-        # No data for swagger or unauthenticated
+        # Swagger view / unauthenticated → no data
         if getattr(self, 'swagger_fake_view', False) or not user.is_authenticated:
-            return Sponsor.objects.none()
+            return Sponsorship.objects.none()
 
-        # Admin sees all sponsorships
+        # Admin → all sponsorships
         if user.groups.filter(name="Admin").exists():
-            return self.queryset.all()
+            return Sponsorship.objects.all()
 
-        # Sponsors see only their own sponsorships
-        if user.role == 'sponsor':
-            return self.queryset.filter(sponsor=user)
+        # Sponsor → only their sponsorships
+        if user.groups.filter(name="Sponsor").exists():
+            return Sponsorship.objects.filter(sponsor=user)
 
-        # Instructors and Students typically don’t see sponsorships
-        if user.groups.filter(name="Instructor").exists() or user.role == 'student':
-            return Sponsor.objects.none()
+        # Instructor/Student → no access
+        return Sponsorship.objects.none()
 
-        # Default no data
-        return Sponsor.objects.none()
+    def perform_create(self, serializer):
+        """Auto-assign sponsor when creating a sponsorship."""
+        user = self.request.user
+
+        if user.groups.filter(name="Sponsor").exists():
+            serializer.save(sponsor=user)
+        else:
+            raise PermissionDenied("Only sponsors can create sponsorships.")
     
 class SponsorshipViewSet(viewsets.ModelViewSet):
     queryset = Sponsorship.objects.all()
     serializer_class = SponsorshipSerializer
-
+    permission_classes = [IsAuthenticated]  # default
     def get_permissions(self):
         user = self.request.user
-        # Default permission for unauthenticated users
-        if not user.is_authenticated:
-            return [IsAuthenticated()]
 
         # Admin full access
         if user.groups.filter(name="Admin").exists():
@@ -295,24 +317,29 @@ class SponsorshipViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
 
-        # No data for swagger or unauthenticated
+        # Swagger view / unauthenticated → no data
         if getattr(self, 'swagger_fake_view', False) or not user.is_authenticated:
             return Sponsorship.objects.none()
 
-        # Admin sees all sponsorships
+        # Admin → all sponsorships
         if user.groups.filter(name="Admin").exists():
-            return self.queryset.all()
+            return Sponsorship.objects.all()
 
-        # Sponsors see only sponsorships they created
-        if user.role == 'sponsor':
-            return self.queryset.filter(sponsor=user)
+        # Sponsor → only their sponsorships
+        if user.groups.filter(name="Sponsor").exists():
+            return Sponsorship.objects.filter(sponsor=user)
 
-        # Instructors and Students typically don’t see sponsorships
-        if user.groups.filter(name="Instructor").exists() or user.role == 'student':
-            return Sponsorship.objects.none()
-
-        # Default no data
+        # Instructor/Student → no access
         return Sponsorship.objects.none()
+
+    def perform_create(self, serializer):
+        """Auto-assign sponsor when creating a sponsorship."""
+        user = self.request.user
+
+        if user.groups.filter(name="Sponsor").exists():
+            serializer.save(sponsor=user)
+        else:
+            raise PermissionDenied("Only sponsors can create sponsorships.")
     
 class DashboardViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
@@ -359,16 +386,33 @@ class NotificationViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
 
-        # No data for swagger or unauthenticated
         if getattr(self, 'swagger_fake_view', False) or not user.is_authenticated:
             return Notification.objects.none()
 
-        # Admin sees all notifications
+        # Admin → all notifications
         if user.groups.filter(name="Admin").exists():
-            return self.queryset.all()
+            return Notification.objects.all()
 
-        # Users see only their own notifications
-        return self.queryset.filter(user=user)
+        # Instructor → notifications related to their courses/students
+        if user.groups.filter(name="Instructor").exists():
+            return Notification.objects.filter(course__created_by=user)
+
+        # Student → only their notifications
+        if user.groups.filter(name="Student").exists():
+            return Notification.objects.filter(recipient=user)
+
+        # Sponsor → notifications for their sponsored students
+        if user.groups.filter(name="Sponsor").exists():
+            return Notification.objects.filter(student__sponsorship__sponsor=user)
+
+        return Notification.objects.none()
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if user.groups.filter(name="Admin").exists():
+            serializer.save()
+        else:
+            raise PermissionDenied("Only Admins can create notifications.")
     
 class EmailLogViewSet(viewsets.ModelViewSet):
     queryset = EmailLog.objects.all()
