@@ -111,7 +111,17 @@ class SubmissionSerializer(serializers.ModelSerializer):
 class SponsorSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Sponsor
-        fields = '__all__'
+        fields = ['id', 'user', 'company_name', 'funds_provided']
+
+    def validate_user(self, value):
+        # Validate that the user assigned to this sponsor is actually a sponsor
+        if hasattr(value, 'role') and value.role != 'sponsor':
+            raise serializers.ValidationError("The selected user is not a sponsor.")
+        return value
+    
+    def create(self, validated_data):
+        validated_data['sponsor'] = self.context['request'].user  
+        return super().create(validated_data)
 
 # Sponsorship Serializer
 class SponsorshipSerializer(serializers.ModelSerializer):
