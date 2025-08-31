@@ -8,7 +8,7 @@ from django.contrib.auth import get_user_model,authenticate
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework.authtoken.models import Token
 from rest_framework.permissions import AllowAny, IsAuthenticated
-
+from rest_framework.exceptions import PermissionDenied
 User = get_user_model()
 
 class UserViewSet(GenericViewSet,CreateModelMixin):
@@ -50,27 +50,33 @@ class UserViewSet(GenericViewSet,CreateModelMixin):
     def login(self, request):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
+
         email = serializer.validated_data.get('email')
         password = serializer.validated_data.get('password')
         role = serializer.validated_data.get('role')
-        
-        user=authenticate(username=email,password=password)
-        
-        if user and user.role == role:
-            if not user.is_active:
-                return Response({'error': 'User is not verified yet'}, status=403)
-        # get_or_create le k garxa vanda: if token pailai xa vani get garxa ra yedi xaina vani create garxa. 'create' matra garyo vani tesle harek time create garxa so we use get_or_create
-            token, _ = Token.objects.get_or_create(user=user)
-            return Response({
-                'id': user.id,
-                'email': user.email,
-                'role': user.role,  # or list(user.groups.values_list("name", flat=True))
-                'groups':list(user.groups.values_list("name", flat=True)),
-                'token': token.key
-            })
 
-        return Response({'error': 'Invalid credentials or role'}, status=400)
+        # ✅ authenticate with email (USERNAME_FIELD)
+        user = authenticate(request, email=email, password=password)
+
+        if not user:
+            return Response({"error": "Invalid email or password"}, status=400)
+
+        if user.role != role:
+            return Response({"error": "Role mismatch"}, status=400)
+
+        if not user.is_active:
+            raise PermissionDenied("OTP verification incomplete. Please verify your email to activate the account.")
+
+        token, _ = Token.objects.get_or_create(user=user)
+        return Response({
+            "id": user.id,
+            "email": user.email,
+            "role": user.role,
+            "groups": list(user.groups.values_list("name", flat=True)),
+            "token": token.key,
+        })
+
+
     
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
     def list_users(self, request):
