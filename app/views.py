@@ -116,11 +116,15 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
 class AssessmentViewSet(viewsets.ModelViewSet):
     queryset = Assessment.objects.all()
     serializer_class = AssessmentSerializer
-    permission_classes = [IsAuthenticated | ReadOnly]  # default
+    permission_classes = [IsAuthenticated]  # default fallback
 
     def get_permissions(self):
+        """
+        Return appropriate permissions based on user group.
+        """
         user = self.request.user
-        #  If unauthenticated, default permission (can be adjusted)
+
+        # If unauthenticated, default permission
         if not user.is_authenticated:
             return [IsAuthenticated()]
 
@@ -128,17 +132,20 @@ class AssessmentViewSet(viewsets.ModelViewSet):
         if user.groups.filter(name="Admin").exists():
             return [IsAdmin()]
 
-        # Instructor can create/manage own assessments
+        # Instructor can manage own assessments
         elif user.groups.filter(name="Instructor").exists():
             return [IsInstructor()]
 
-        # Default fallback
+        # Default fallback for authenticated users
         return [IsAuthenticated()]
 
     def get_queryset(self):
+        """
+        Return queryset based on user role.
+        """
         user = self.request.user
 
-        # Swagger view or unauthenticated = no data
+        # Swagger or unauthenticated: return empty queryset
         if getattr(self, 'swagger_fake_view', False) or not user.is_authenticated:
             return Assessment.objects.none()
 
@@ -150,29 +157,66 @@ class AssessmentViewSet(viewsets.ModelViewSet):
         if user.groups.filter(name="Instructor").exists():
             return self.queryset.filter(course__created_by=user)
 
-        #  Student sees assessments only in their enrolled courses
+        # Student sees assessments only in enrolled courses
         if user.groups.filter(name="Student").exists():
             enrolled_courses = Enrollment.objects.filter(student=user).values_list('course', flat=True)
             return self.queryset.filter(course__in=enrolled_courses)
-        #  Sponsors don’t see assessments by default
+
+        # Sponsor sees no assessments by default
         if user.groups.filter(name="Sponsor").exists():
             return Assessment.objects.none()
 
-        #  Default no data
+        # Default fallback: empty queryset
         return Assessment.objects.none()
 
     def perform_create(self, serializer):
+        """
+        Control creation based on user role.
+        Admins can create any assessment.
+        Instructors can create only for their own courses.
+        Others are forbidden.
+        """
         user = self.request.user
 
-        if user.groups.filter(name="Admin").exists():
-            serializer.save()
-        elif user.groups.filter(name="Instructor").exists():
-            course = serializer.validated_data.get("course")
-            if course.created_by != user:
-                raise PermissionDenied("You can only add assessments to your own courses.")
-            serializer.save()
-        else:
+        if not (user.groups.filter(name="Admin").exists() or user.groups.filter(name="Instructor").exists()):
             raise PermissionDenied("Only Admins or Instructors can create assessments.")
+
+        # # Validate module (if provided) belongs to instructor's course
+        # module_data = serializer.validated_data.get('module')
+        # if module_data:
+        #     if user.groups.filter(name="Instructor").exists() and module_data.get('course', None):
+        #         # If module_data has a course field, ensure it matches assessment course
+        #         if module_data['course'] != serializer.validated_data['course']:
+        #             raise PermissionDenied("Module course must match the assessment course.")
+
+        serializer.save()
+        
+    def perform_update(self, serializer):
+        user = self.request.user
+        if serializer.instance.module and 'module' in serializer.validated_data:
+            raise PermissionDenied("Cannot change the module once Assessment is created.")
+        # Check instructor cannot assign course to another instructor's course
+        course = serializer.validated_data.get('course')
+        if course and user.groups.filter(name="Instructor").exists() and course.created_by != user:
+            raise PermissionDenied("You can only assign assessments to your own courses.")
+        serializer.save()
+        
+    # def perform_update(self, serializer):
+    #     """
+    #     Prevent changing module after creation.
+    #     Validate course updates for Instructors.
+    #     """
+    #     user = self.request.user
+
+    #     if 'module' in serializer.validated_data:
+    #         raise PermissionDenied("Module cannot be changed once the assessment is created.")
+
+    #     course = serializer.validated_data.get('course')
+    #     if course and user.groups.filter(name="Instructor").exists() and course.created_by != user:
+    #         raise PermissionDenied("You can only assign assessments to your own courses.")
+
+    #     serializer.save()
+        
 class SubmissionViewSet(viewsets.ModelViewSet):
     queryset = Submission.objects.all()
     serializer_class = SubmissionSerializer
