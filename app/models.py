@@ -131,7 +131,7 @@ class Assessment(BaseModel):
         super().save(*args, **kwargs)
 
 
-# Submission model
+# Submission for modul model
 class Submission(BaseModel):
     assessment = models.ForeignKey(Assessment, on_delete=models.CASCADE)
     student = models.ForeignKey(User, on_delete=models.CASCADE, limit_choices_to={'role': 'student'})
@@ -142,13 +142,17 @@ class Submission(BaseModel):
     def __str__(self):
         return f"{self.student.username} submitted {self.assessment.title}"
 
-    #  Validate if student is enrolled
+  # Validate if student is enrolled
     def clean(self):
-        enrolled = Enrollment.objects.filter(student=self.student, course=self.assessment.course).exists()
+        enrolled = Enrollment.objects.filter(
+            student=self.student, course=self.assessment.course
+        ).exists()
         if not enrolled:
             raise ValidationError("Student must be enrolled in the course to submit this assessment.")
         
-        
+    class Meta:
+        unique_together = ("assessment", "student")  # one submission per assessment
+        ordering = ["-submitted_at"]
 # Sponsor model
 class Sponsor(BaseModel):
     user = models.OneToOneField(User, on_delete=models.CASCADE, limit_choices_to={'role': 'sponsor'})
