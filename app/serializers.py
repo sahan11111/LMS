@@ -58,21 +58,56 @@ class EnrollmentSerializer(serializers.ModelSerializer):
         validated_data['student'] = self.context['request'].user  # auto-assign
         return super().create(validated_data)
 
+        
+        
+class LessonContentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.LessonContent
+        fields = ['title', 'content_type', 'file']
+
+class LessonSerializer(serializers.ModelSerializer):
+    lesson_contents = LessonContentSerializer(many=True, required=False)
+
+    class Meta:
+        model = models.Lesson
+        fields = ['title', 'content', 'lesson_contents']
+
+class ModuleSerializer(serializers.ModelSerializer):
+    lessons = LessonSerializer(many=True, required=False)
+
+    class Meta:
+        model = models.Module
+        fields = ['title', 'description', 'lessons']
+        # 'course' and 'created_by' will be set automatically when creating via Assessment
+        # read_only_fields = ['id']
+        
 # Assessment Serializer
 class AssessmentSerializer(serializers.ModelSerializer):
+    module = ModuleSerializer(required=False)
     class Meta:
         model = models.Assessment
-        fields = ['id', 'course', 'title', 'due_date', 'max_score']
+         # Include all relevant fields, including module and quiz
+        fields = ['id', 'course','module','quiz' ,'title', 'due_date', 'max_score']
 
     def get_fields(self):
+        """
+        Dynamically adjust serializer fields based on the user role.
+        For Students and Sponsors, make 'course' read-only.
+        """
         fields = super().get_fields()
         user = self.context['request'].user
-        # Make 'course' read-only for Students/Sponsors
+        # Make 'course' read-only for Students/Sponsors or Only Admins and Instructors can modify 'course
         if not (user.groups.filter(name="Admin").exists() or user.groups.filter(name="Instructor").exists()):
             fields['course'].read_only = True
         return fields
 
     def validate_course(self, value):
+        """
+        Ensure only authorized users can assign a course to an assessment.
+        - Admin: can assign any course
+        - Instructor: can only assign courses they created
+        - Others: cannot assign courses
+        """
         user = self.context['request'].user
         if user.groups.filter(name="Admin").exists():
             return value
@@ -81,8 +116,103 @@ class AssessmentSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("You can only assign assessments to your own courses.")
             return value
         raise serializers.ValidationError("You are not allowed to assign a course.")
+    
+    def validate(self, attrs):
+        """
+        Validate that the assessment is linked to either a module or a quiz,
+        but not both. This mirrors the model's clean() method.
+        """
+        module = attrs.get('module')
+        quiz = attrs.get('quiz')
+
+        if not module and not quiz:
+            raise serializers.ValidationError("Assessment must be linked to either a module or a quiz.")
+        if module and quiz:
+            raise serializers.ValidationError("Assessment cannot be linked to both module and quiz.")
+
+        return attrs
+    
+    def create(self, validated_data):
+        module_data = validated_data.pop('module', None)
+
+        # Create assessment first with quiz or empty module
+        assessment = models.Assessment(**validated_data)
+
+        # If module data is provided, create Module and assign to assessment
+        if module_data:
+            lessons_data = module_data.pop('lessons', [])
+            module = models.Module.objects.create(
+                title=module_data['title'],
+                description=module_data.get('description', ''),
+                course=assessment.course,
+                created_by=self.context['request'].user
+            )
+            assessment.module = module  # assign module BEFORE saving
+
+        # Save assessment (will run full_clean correctly)
+        assessment.save()
+
+        # Now create Lessons and LessonContents
+        if module_data and lessons_data:
+            for lesson_data in lessons_data:
+                lesson_contents_data = lesson_data.pop('lesson_contents', [])
+                lesson = models.Lesson.objects.create(
+                    module=assessment.module,
+                    title=lesson_data['title'],
+                    content=lesson_data.get('content', '')
+                )
+                for content_data in lesson_contents_data:
+                    models.LessonContent.objects.create(
+                        lesson=lesson,
+                        title=content_data['title'],
+                        content_type=content_data['content_type'],
+                        file=content_data.get('file')
+                    )
+
+        return assessment
+
+    
+    # def create(self, validated_data):
+    #     """
+    #     Create Assessment and optionally create a linked Module.
+    #     """
+    #     module_data = validated_data.pop('module', None)
+    #     assessment = models.Assessment.objects.create(**validated_data)
+
+    #     if module_data:
+    #         # Create Module
+    #         lessons_data = module_data.pop('lessons', [])
+    #         module = models.Module.objects.create(
+    #             title=module_data['title'],
+    #             description=module_data.get('description', ''),
+    #             course=assessment.course,
+    #             created_by=self.context['request'].user
+    #         )
+    #         assessment.module = module
+    #         assessment.save()
+
+    #         for lesson_data in lessons_data:
+    #             lesson_contents_data = lesson_data.pop('lesson_contents', [])
+    #             lesson = models.Lesson.objects.create(
+    #                 module=module,
+    #                 title=lesson_data['title'],
+    #                 content=lesson_data.get('content', '')
+    #             )
+    #             for content_data in lesson_contents_data:
+    #                 models.LessonContent.objects.create(
+    #                     lesson=lesson,
+    #                     title=content_data['title'],
+    #                     content_type=content_data['content_type'],
+    #                     file=content_data.get('file', None)
+    #                 )
+    #     return assessment
 
     def update(self, instance, validated_data):
+        """
+        Restrict updates to 'course' field based on user role:
+        - Students/Sponsors cannot update the course
+        - Instructors can update only if they created the course
+        """
         user = self.context['request'].user
         if 'course' in validated_data:
             if not (user.groups.filter(name="Admin").exists() or user.groups.filter(name="Instructor").exists()):
@@ -161,3 +291,5 @@ class EmailLogSerializer(serializers.ModelSerializer):
         model = models.EmailLog
         fields = '__all__'
         # Optional: make user read-only if email logs track sender
+
+
