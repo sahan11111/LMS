@@ -6,8 +6,8 @@ from django.apps import apps
 
 @receiver(post_migrate)
 def create_default_groups(sender, **kwargs):
-    # Only run once for the "core" app to avoid duplicate executions
-    if sender.name != "core":
+    # Run only once after 'auth' migrations (safe point for built-in perms)
+    if sender.name != "auth":
         return
 
     roles = {
@@ -21,9 +21,14 @@ def create_default_groups(sender, **kwargs):
         group, _ = Group.objects.get_or_create(name=role)
 
         for perm_str in perm_list:
+            app_label, codename = perm_str.split(".")
             try:
-                app_label, codename = perm_str.split(".")
-                perm = Permission.objects.get(content_type__app_label=app_label, codename=codename)
+                perm = Permission.objects.get(
+                    content_type__app_label=app_label,
+                    codename=codename
+                )
                 group.permissions.add(perm)
             except Permission.DoesNotExist:
-                print(f"⚠️ Permission {perm_str} not found (maybe migrations not applied yet)")
+                # Skip missing permissions silently
+                print(f"⚠️ Permission {perm_str} not found (yet)")
+

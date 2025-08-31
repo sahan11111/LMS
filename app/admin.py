@@ -59,7 +59,7 @@ class NotificationAdmin(admin.ModelAdmin):
     list_per_page = 10
 @admin.register(EmailLog)
 class EmailLogAdmin(admin.ModelAdmin):  
-    list_display = ('id', 'user', 'subject', 'sent_at')
+    list_display = ('id', 'user', 'subject',  'created_at')
     search_fields = ('user__username', 'subject' )
     # list_filter = ('status', 'sent_at')
     ordering = ('id',)
