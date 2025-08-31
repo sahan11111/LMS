@@ -6,7 +6,7 @@ class CourseSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Course
         fields = ['id', 'title', 'description', 'difficulty_level', 'created_by']
-    
+        read_only_fields = ['created_by']
     # Make created_by read-only for non-admins
     def get_fields(self):
         fields = super().get_fields()
@@ -225,17 +225,24 @@ class AssessmentSerializer(serializers.ModelSerializer):
 class SubmissionSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Submission
-        fields = ['id', 'assessment', 'student', 'score', 'submitted_at']
-        read_only_fields = ['student']  # auto-assign
+        fields = ['id', 'assessment', 'student', 'content', 'score', 'submitted_at']
+        read_only_fields = ['student', 'score', 'submitted_at']   # student auto-assigned, score only instructor updates
 
-    def validate_student(self, value):
-        if value.role != 'student':
-            raise serializers.ValidationError("Only users with the student role can submit assessments.")
+    def validate_assessment(self, value):
+        """Ensure assessment exists and is valid."""
+        if not value:
+            raise serializers.ValidationError("Assessment is required.")
         return value
 
     def create(self, validated_data):
-        validated_data['student'] = self.context['request'].user  # auto-assign
+        request = self.context.get("request")
+        validated_data["student"] = request.user
         return super().create(validated_data)
+class SubmissionGradeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.Submission
+        fields = ['score']
+
 
 # Sponsor Serializer
 class SponsorSerializer(serializers.ModelSerializer):

@@ -1,5 +1,6 @@
 from django.shortcuts import render
-from rest_framework import viewsets
+from rest_framework import viewsets,status
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from .models import *
 from .serializers import *
@@ -225,55 +226,59 @@ class SubmissionViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         user = self.request.user
 
+        # If not logged in → deny
+        if not user or not user.is_authenticated:
+            return [IsAuthenticated()]  # Returns 401 instead of crashing
+
         # Admin full access
         if user.groups.filter(name="Admin").exists():
             return [IsAdmin()]
 
-        # Instructor can manage submissions for own courses
+        # Instructor permissions
         elif user.groups.filter(name="Instructor").exists():
-            return [IsInstructorOrReadOnly()]
+            return [IsInstructor()]
 
-        # Student can view and submit their own submissions
-        elif user.role == 'student':
+        # Student permissions
+        elif getattr(user, "role", None) == "student" or user.groups.filter(name="Student").exists():
             return [IsStudent()]
 
-        # Sponsor permissions (usually no direct access)
-        elif user.role == 'sponsor':
+        # Sponsor permissions
+        elif getattr(user, "role", None) == "sponsor" or user.groups.filter(name="Sponsor").exists():
             return [IsSponsor()]
 
-        # Default fallback permission
+        # Fallback
         return [IsAuthenticated()]
 
     def get_queryset(self):
-            user = self.request.user
+        user = self.request.user
 
-            # Swagger view / unauthenticated → no data
-            if getattr(self, 'swagger_fake_view', False) or not user.is_authenticated:
-                return Submission.objects.none()
-
-            # Admin → all submissions
-            if user.groups.filter(name="Admin").exists():
-                return Submission.objects.all()
-
-            # Instructor → submissions only for assessments in their courses
-            if user.groups.filter(name="Instructor").exists():
-                return Submission.objects.filter(assessment__course__created_by=user)
-
-            # Student → only their own submissions
-            if user.groups.filter(name="Student").exists():
-                return Submission.objects.filter(student=user)
-
-            # Sponsor → no submissions
-            if user.groups.filter(name="Sponsor").exists():
-                return Submission.objects.none()
-
+        # Swagger view / unauthenticated → no data
+        if getattr(self, "swagger_fake_view", False) or not user.is_authenticated:
             return Submission.objects.none()
+
+        # Admin → all submissions
+        if user.groups.filter(name="Admin").exists():
+            return Submission.objects.all()
+
+        # Instructor → submissions only for assessments in their courses
+        if user.groups.filter(name="Instructor").exists():
+            return Submission.objects.filter(assessment__course__created_by=user)
+
+        # Student → only their own submissions
+        if user.groups.filter(name="Student").exists() or getattr(user, "role", None) == "student":
+            return Submission.objects.filter(student=user)
+
+        # Sponsor → no submissions
+        if user.groups.filter(name="Sponsor").exists() or getattr(user, "role", None) == "sponsor":
+            return Submission.objects.none()
+
+        return Submission.objects.none()
 
     def perform_create(self, serializer):
         """Auto-assign student when creating a submission."""
         user = self.request.user
 
-        if not user.groups.filter(name="Student").exists():
+        if not user.groups.filter(name="Student").exists() and getattr(user, "role", None) != "student":
             raise PermissionDenied("Only students can submit assessments.")
 
         assessment = serializer.validated_data.get("assessment")
@@ -284,8 +289,45 @@ class SubmissionViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("You must be enrolled in the course to submit.")
 
         serializer.save(student=user)
-    
-    
+
+    @action(detail=True, methods=["patch"], url_path="grade")
+    def grade_submission(self, request, pk=None):
+        submission = self.get_object()
+        user = request.user
+
+        # Step 1: Must be an instructor
+        if not (user.groups.filter(name="Instructor").exists() or getattr(user, "role", "").lower() == "instructor"):
+            return Response(
+                {"error": "Permission denied: Only instructors can grade submissions."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # Step 2: Check if instructor owns the course
+        if submission.assessment.course.created_by_id != user.id:
+            return Response(
+                {"error": "Permission denied: You can only grade submissions for your own courses."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # Step 3: Validate score input
+        score = request.data.get("score")
+        if score is None:
+            return Response({"error": "Score is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            score = float(score)
+        except ValueError:
+            return Response({"error": "Score must be a number."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Step 4: Save grade
+        submission.score = score
+        submission.save()
+
+        return Response(
+            {"message": "Submission graded successfully", "score": submission.score},
+            status=status.HTTP_200_OK,
+        )
+
 class SponsorViewSet(viewsets.ModelViewSet):
     queryset = Sponsor.objects.all()
     serializer_class = SponsorSerializer
@@ -303,8 +345,8 @@ class SponsorViewSet(viewsets.ModelViewSet):
             return [IsSponsor()]
 
         # Instructors and Students typically don’t manage sponsorships
-        elif user.groups.filter(name="Instructor").exists() or user.role == 'student':
-            return [IsAuthenticatedOrReadOnly()]
+        elif user.groups.filter(name="Instructor").exists() :
+            return [IsInstructorOrReadOnly()]
 
         # Default fallback permission
         return [IsAuthenticated()]
