@@ -1,5 +1,5 @@
 from django.shortcuts import render
-from rest_framework import viewsets,status
+from rest_framework import viewsets,status,filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from .models import *
@@ -9,10 +9,15 @@ from .permissions import *
 from rest_framework.permissions import AllowAny
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.exceptions import PermissionDenied
+from .pagination import ProductPageNumberPagination
 
 class CourseViewSet(viewsets.ModelViewSet):
-    queryset = Course.objects.all()
+    queryset = Course.objects.all().order_by("id")
     serializer_class = CourseSerializer
+    pagination_class=ProductPageNumberPagination
+    filter_backends = [filters.SearchFilter]
+    search_fields =['title']
+    
 
     def get_permissions(self):
         user = self.request.user
@@ -34,6 +39,7 @@ class CourseViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        qs=Course.objects.all()
         
         # Swagger fake view or unauthenticated users see no enrollments to avoid errors and protect data
         if getattr(self, 'swagger_fake_view', False):
@@ -41,21 +47,24 @@ class CourseViewSet(viewsets.ModelViewSet):
         
          # Admin sees all
         if user.is_authenticated and user.groups.filter(name="Admin").exists(): 
-            return Course.objects.all()
+            return qs.order_by('id')
          # Instructor sees own courses only
          
         elif user.is_authenticated and user.groups.filter(name="Instructor").exists(): 
-            return Course.objects.filter(created_by=user)
+            return qs.filter(created_by=user).order_by('id')
         
         # Students & Sponsors see all (read-only)
         else:  
-            return Course.objects.all()
+            return qs.order_by('id')
 
 
 class EnrollmentViewSet(viewsets.ModelViewSet):
-    queryset = Enrollment.objects.all()
+    queryset = Enrollment.objects.all().order_by("id")
     serializer_class = EnrollmentSerializer
     permission_classes = [IsAuthenticated]  
+    pagination_class=ProductPageNumberPagination
+    filter_backends = [filters.SearchFilter]
+    search_fields =['course__id']
 
     def get_permissions(self):
         user = self.request.user
@@ -80,28 +89,29 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        qs=Enrollment.objects.all()
 
         # Swagger view / unauthenticated → no data
         if getattr(self, 'swagger_fake_view', False) or not user.is_authenticated:
-            return Enrollment.objects.none()
+            return qs.none()
 
         # Admin → all enrollments
         if user.groups.filter(name="Admin").exists():
-            return Enrollment.objects.all()
+            return qs.all().order_by('id')
 
         # Instructor → enrollments only for their own courses
         if user.groups.filter(name="Instructor").exists():
-            return Enrollment.objects.filter(course__created_by=user)
+            return qs.filter(course__created_by=user).order_by('id')
 
         # Student → only their own enrollments
         if user.groups.filter(name="Student").exists():
-            return Enrollment.objects.filter(student=user)
+            return qs.filter(student=user).order_by('id')
 
         # Sponsor → enrollments of students they sponsor
         if user.groups.filter(name="Sponsor").exists():
-            return Enrollment.objects.filter(student__sponsorship__sponsor__user=user).distinct()
+            return qs.filter(student__sponsorship__sponsor__user=user).distinct()
 
-        return Enrollment.objects.none()
+        return qs.none()
 
     def perform_create(self, serializer):
         """Auto-assign student when creating an enrollment."""
