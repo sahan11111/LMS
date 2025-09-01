@@ -9,6 +9,11 @@ from drf_yasg.utils import swagger_auto_schema
 from rest_framework.authtoken.models import Token
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.exceptions import PermissionDenied
+from django.conf import settings
+from random import randint
+from django.core.mail import send_mail
+
+
 User = get_user_model()
 
 class UserViewSet(GenericViewSet,CreateModelMixin):
@@ -39,11 +44,60 @@ class UserViewSet(GenericViewSet,CreateModelMixin):
         if self.action == 'login':
             return serializers.UserLoginSerializer
         return super().get_serializer_class()
-
+        # This view is for Forgot Password
+    @swagger_auto_schema(
+        methods=['post'],
+        request_body=serializers.UserForgotPasswordEmailSerializer
+    )
+    @action(methods=['post'],detail=False)
+    def send_otp_forgot_password(self, request):
+        user = get_object_or_404(User, email=request.data.get('email'))
+        serializer = serializers.UserForgotPasswordEmailSerializer(user, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user.otp = str(randint(0000,9999))
+        user.save()
+        
+        send_mail(
+            subject='Forgot Password OTP',
+            message=f'Your otp is {user.otp} for {user.email}',
+            from_email=settings.SENDER_EMAIL_USER,
+            recipient_list=[
+                user.email
+            ]
+        )
+        return Response({
+            'details':f'OTP has been successfully sent to {user.email}.'
+        })
+    
+    # This view is for Update Forgot Password 
+    @swagger_auto_schema(
+        methods=['put'],
+        request_body=serializers.UpdateUserForgotPasswordEmailSerializer
+    )
+    @action(methods=['put'],detail=False)
+    def update_forgot_password(self, request):
+        user = get_object_or_404(User, email=request.data.get('email'))
+        serializer = serializers.UpdateUserForgotPasswordEmailSerializer(user, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        
+        return Response({
+            'details':f'Password has been successfully updated for {user.email}'
+        })
 
     @action(detail=False, methods=['get'], url_path='detail', permission_classes=[IsAuthenticated])
     def user_detail(self, request):
         serializer = self.get_serializer(request.user)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def list_users(self, request):
+        user = request.user
+        if not user.groups.filter(name="Admin").exists():
+            return Response({'detail': 'You do not have permission to view this.'}, status=403)
+        
+        users = self.get_queryset()
+        serializer = self.get_serializer(users, many=True)
         return Response(serializer.data)
     
     @action(detail=False, methods=['post'])
@@ -78,12 +132,3 @@ class UserViewSet(GenericViewSet,CreateModelMixin):
 
 
     
-    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
-    def list_users(self, request):
-        user = request.user
-        if not user.groups.filter(name="Admin").exists():
-            return Response({'detail': 'You do not have permission to view this.'}, status=403)
-        
-        users = self.get_queryset()
-        serializer = self.get_serializer(users, many=True)
-        return Response(serializer.data)
