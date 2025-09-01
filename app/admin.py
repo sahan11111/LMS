@@ -64,3 +64,25 @@ class EmailLogAdmin(admin.ModelAdmin):
     # list_filter = ('status', 'sent_at')
     ordering = ('id',)
     list_per_page = 10
+
+@admin.register(Module)
+class ModuleAdmin(admin.ModelAdmin):
+    list_display = ('id', 'course', 'title', 'created_by','created_at', 'updated_at')  
+    search_fields = ('course__title', 'title')
+    ordering = ('id',)
+    list_per_page = 10
+    
+@admin.register(Lesson)
+class LessonAdmin(admin.ModelAdmin):
+    list_display = ('id', 'module', 'title', 'created_at', 'updated_at')  
+    search_fields = ('module__title', 'title')
+    ordering = ('id',)
+    list_per_page = 10
+    
+    
+@admin.register(LessonContent)
+class LessonContentAdmin(admin.ModelAdmin):
+    list_display = ('id', 'lesson', 'content_type', 'created_at', 'updated_at')  
+    search_fields = ('lesson__title', 'content_type')
+    ordering = ('id',)
+    list_per_page = 10
