@@ -85,7 +85,7 @@ class UserVerificationSerializer(serializers.Serializer):
         return user
     
 # This is for Forget Password
-class UserForgetPasswordSeralizer(serializers.Serializer):
+class UserForgotPasswordEmailSerializer(serializers.Serializer):
     email = serializers.EmailField(max_length=255)
 
     def validate_email(self, value):
@@ -96,7 +96,7 @@ class UserForgetPasswordSeralizer(serializers.Serializer):
     
 #This is for updating forget password
 
-class UpadteUserForgetPasswordSerializer(serializers.Serializer):
+class UpdateUserForgotPasswordEmailSerializer(serializers.Serializer):
     email = serializers.EmailField()
     otp = serializers.CharField(max_length=255)
     password = serializers.CharField(write_only=True)
@@ -107,7 +107,7 @@ class UpadteUserForgetPasswordSerializer(serializers.Serializer):
             raise serializers.ValidationError({
                 'confirm_password' : 'Password do not match'
             })
-        return super().validate(attrs)
+        return attrs # don’t call super().validate(attrs), just return attrs
     
     def update(self, user, validated_data):
         otp=validated_data.get('otp')
@@ -123,4 +123,4 @@ class UpadteUserForgetPasswordSerializer(serializers.Serializer):
             raise serializers.ValidationError({
                 'otp': 'Invalid otp or email'
             })
-        return super().update(user, validated_data)
+        return user
