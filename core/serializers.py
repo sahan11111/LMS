@@ -5,6 +5,9 @@ from django.conf import settings
 from django.contrib.auth.models import Group
 from django.core.mail import send_mail
 from random import randint
+from django.db import transaction
+from django.contrib.auth.hashers import make_password
+
 User = get_user_model()
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
@@ -80,3 +83,44 @@ class UserVerificationSerializer(serializers.Serializer):
             })
 
         return user
+    
+# This is for Forget Password
+class UserForgetPasswordSeralizer(serializers.Serializer):
+    email = serializers.EmailField(max_length=255)
+
+    def validate_email(self, value):
+        if not User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("User with this email does not exist.")
+        return value
+    
+    
+#This is for updating forget password
+
+class UpadteUserForgetPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    otp = serializers.CharField(max_length=255)
+    password = serializers.CharField(write_only=True)
+    confirm_password = serializers.CharField(write_only=True)
+    
+    def validate(self, attrs):
+        if attrs.get('password')!= attrs.get('confirm_password'):
+            raise serializers.ValidationError({
+                'confirm_password' : 'Password do not match'
+            })
+        return super().validate(attrs)
+    
+    def update(self, user, validated_data):
+        otp=validated_data.get('otp')
+        email=validated_data.get('email')
+        if otp==user.otp and email==user.email:
+            # make_password rakhena vani validation ma error aauxa ra hamle manager banauda password hash ma store hunxa so hash ma ja rakhna parxa otherwise error aauxa login garda
+            user.password=make_password(validated_data.get('password'))
+            
+            # 'OTP=none' le chai ekchoti pathako OTP, ekchoti matra use garna milxa
+            user.otp=None
+            user.save()
+        else:
+            raise serializers.ValidationError({
+                'otp': 'Invalid otp or email'
+            })
+        return super().update(user, validated_data)
