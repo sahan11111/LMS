@@ -81,9 +81,31 @@ class ModuleSerializer(serializers.ModelSerializer):
         # 'course' and 'created_by' will be set automatically when creating via Assessment
         # read_only_fields = ['id']
         
+class AnswerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.Answer
+        fields = ['id', 'text', 'is_correct']
+
+class QuestionSerializer(serializers.ModelSerializer):
+    answers = AnswerSerializer(many=True, required=False)
+
+    class Meta:
+        model = models.Question
+        fields = ['id', 'text', 'answers']
+
+class QuizSerializer(serializers.ModelSerializer):
+    questions = QuestionSerializer(many=True, required=False)
+
+    class Meta:
+        model = models.Quiz
+        fields = ['id', 'title', 'description', 'questions']
+        
 # Assessment Serializer
 class AssessmentSerializer(serializers.ModelSerializer):
     module = ModuleSerializer(required=False)
+    quiz=QuizSerializer(required=False) # nested quiz data
+    
+    
     class Meta:
         model = models.Assessment
          # Include all relevant fields, including module and quiz
@@ -97,8 +119,11 @@ class AssessmentSerializer(serializers.ModelSerializer):
         fields = super().get_fields()
         user = self.context['request'].user
         # Make 'course' read-only for Students/Sponsors or Only Admins and Instructors can modify 'course
-        if not (user.groups.filter(name="Admin").exists() or user.groups.filter(name="Instructor").exists()):
-            fields['course'].read_only = True
+        if not user or getattr(self, 'swagger_fake_view', False):
+            fields['course'].read_only = False
+        else:
+            if not (user.groups.filter(name="Admin").exists() or user.groups.filter(name="Instructor").exists()):
+                fields['course'].read_only = True
         return fields
 
     def validate_course(self, value):
@@ -108,14 +133,23 @@ class AssessmentSerializer(serializers.ModelSerializer):
         - Instructor: can only assign courses they created
         - Others: cannot assign courses
         """
+        
         user = self.context['request'].user
+         
+        #  Check if course is provided
+        if not value:
+            raise serializers.ValidationError("Course is required.")
+
+        #  Permission checks
         if user.groups.filter(name="Admin").exists():
             return value
-        if user.groups.filter(name="Instructor").exists():
+        elif user.groups.filter(name="Instructor").exists():
             if value.created_by != user:
                 raise serializers.ValidationError("You can only assign assessments to your own courses.")
             return value
-        raise serializers.ValidationError("You are not allowed to assign a course.")
+        else:
+            raise serializers.ValidationError("You are not allowed to assign a course.")
+
     
     def validate(self, attrs):
         """
@@ -133,10 +167,22 @@ class AssessmentSerializer(serializers.ModelSerializer):
         return attrs
     
     def create(self, validated_data):
+        user = self.context['request'].user
         module_data = validated_data.pop('module', None)
+        quiz_data = validated_data.pop('quiz', None)
 
-        # Create assessment first with quiz or empty module
-        assessment = models.Assessment(**validated_data)
+        # Create the assessment instance first
+        if 'course' not in validated_data or validated_data['course'] is None:
+            if user.groups.filter(name="Instructor").exists():
+                # Assign first course created by instructor automatically
+                course = models.Course.objects.filter(created_by=user).first()
+                if not course:
+                    raise serializers.ValidationError("Instructor has no course to assign.")
+                validated_data['course'] = course
+            else:
+                raise serializers.ValidationError("Course is required.")
+            
+        assessment = models.Assessment.objects.create(**validated_data)
 
         # If module data is provided, create Module and assign to assessment
         if module_data:
@@ -168,44 +214,36 @@ class AssessmentSerializer(serializers.ModelSerializer):
                         content_type=content_data['content_type'],
                         file=content_data.get('file')
                     )
+                    
+        # If quiz data is provided, create Quiz and assign to assessment
+        if quiz_data:
+            questions_data = quiz_data.pop('questions', [])
+            quiz=models.Quiz.objects.create(
+                title=quiz_data['title'],
+                description=quiz_data.get('description',''),
+                course=assessment.course,
+                created_by=self.context['request'].user
+            )
+            assessment.quiz=quiz
+            assessment.save()  # Save again to update quiz field
+            
+            #create questions and answers
+            for question_data in questions_data:
+                answers_data = question_data.pop('answers', [])
+                question = models.Question.objects.create(
+                    quiz=quiz,
+                    text=question_data['text']
+                )
+                for answer_data in answers_data:
+                    models.Answer.objects.create(
+                        question=question,
+                        text=answer_data['text'],
+                        is_correct=answer_data.get('is_correct', False)
+                    )
 
         return assessment
 
     
-    # def create(self, validated_data):
-    #     """
-    #     Create Assessment and optionally create a linked Module.
-    #     """
-    #     module_data = validated_data.pop('module', None)
-    #     assessment = models.Assessment.objects.create(**validated_data)
-
-    #     if module_data:
-    #         # Create Module
-    #         lessons_data = module_data.pop('lessons', [])
-    #         module = models.Module.objects.create(
-    #             title=module_data['title'],
-    #             description=module_data.get('description', ''),
-    #             course=assessment.course,
-    #             created_by=self.context['request'].user
-    #         )
-    #         assessment.module = module
-    #         assessment.save()
-
-    #         for lesson_data in lessons_data:
-    #             lesson_contents_data = lesson_data.pop('lesson_contents', [])
-    #             lesson = models.Lesson.objects.create(
-    #                 module=module,
-    #                 title=lesson_data['title'],
-    #                 content=lesson_data.get('content', '')
-    #             )
-    #             for content_data in lesson_contents_data:
-    #                 models.LessonContent.objects.create(
-    #                     lesson=lesson,
-    #                     title=content_data['title'],
-    #                     content_type=content_data['content_type'],
-    #                     file=content_data.get('file', None)
-    #                 )
-    #     return assessment
 
     def update(self, instance, validated_data):
         """

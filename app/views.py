@@ -206,27 +206,16 @@ class AssessmentViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if serializer.instance.module and 'module' in serializer.validated_data:
             raise PermissionDenied("Cannot change the module once Assessment is created.")
+        
+        if serializer.instance.quiz and 'quiz' in serializer.validated_data:
+            raise PermissionDenied("Cannot change the quiz once Assessment is created.")
         # Check instructor cannot assign course to another instructor's course
         course = serializer.validated_data.get('course')
         if course and user.groups.filter(name="Instructor").exists() and course.created_by != user:
             raise PermissionDenied("You can only assign assessments to your own courses.")
         serializer.save()
         
-    # def perform_update(self, serializer):
-    #     """
-    #     Prevent changing module after creation.
-    #     Validate course updates for Instructors.
-    #     """
-    #     user = self.request.user
 
-    #     if 'module' in serializer.validated_data:
-    #         raise PermissionDenied("Module cannot be changed once the assessment is created.")
-
-    #     course = serializer.validated_data.get('course')
-    #     if course and user.groups.filter(name="Instructor").exists() and course.created_by != user:
-    #         raise PermissionDenied("You can only assign assessments to your own courses.")
-
-    #     serializer.save()
         
 class SubmissionViewSet(viewsets.ModelViewSet):
     queryset = Submission.objects.all()
