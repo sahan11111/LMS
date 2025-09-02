@@ -81,35 +81,13 @@ class ModuleSerializer(serializers.ModelSerializer):
         # 'course' and 'created_by' will be set automatically when creating via Assessment
         # read_only_fields = ['id']
         
-class AnswerSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = models.Answer
-        fields = ['id', 'text', 'is_correct']
-
-class QuestionSerializer(serializers.ModelSerializer):
-    answers = AnswerSerializer(many=True, required=False)
-
-    class Meta:
-        model = models.Question
-        fields = ['id', 'text', 'answers']
-
-class QuizSerializer(serializers.ModelSerializer):
-    questions = QuestionSerializer(many=True, required=False)
-
-    class Meta:
-        model = models.Quiz
-        fields = ['id', 'title', 'description', 'questions']
-        
 # Assessment Serializer
 class AssessmentSerializer(serializers.ModelSerializer):
     module = ModuleSerializer(required=False)
-    quiz=QuizSerializer(required=False) # nested quiz data
-    
-    
     class Meta:
         model = models.Assessment
          # Include all relevant fields, including module and quiz
-        fields = ['id', 'course','module','quiz' ,'title', 'due_date', 'max_score']
+        fields = ['id', 'course','module' ,'title', 'due_date', 'max_score']
 
     def get_fields(self):
         """
@@ -119,11 +97,8 @@ class AssessmentSerializer(serializers.ModelSerializer):
         fields = super().get_fields()
         user = self.context['request'].user
         # Make 'course' read-only for Students/Sponsors or Only Admins and Instructors can modify 'course
-        if not user or getattr(self, 'swagger_fake_view', False):
-            fields['course'].read_only = False
-        else:
-            if not (user.groups.filter(name="Admin").exists() or user.groups.filter(name="Instructor").exists()):
-                fields['course'].read_only = True
+        if not (user.groups.filter(name="Admin").exists() or user.groups.filter(name="Instructor").exists()):
+            fields['course'].read_only = True
         return fields
 
     def validate_course(self, value):
@@ -133,56 +108,25 @@ class AssessmentSerializer(serializers.ModelSerializer):
         - Instructor: can only assign courses they created
         - Others: cannot assign courses
         """
-        
         user = self.context['request'].user
-         
-        #  Check if course is provided
-        if not value:
-            raise serializers.ValidationError("Course is required.")
-
-        #  Permission checks
         if user.groups.filter(name="Admin").exists():
             return value
-        elif user.groups.filter(name="Instructor").exists():
+        if user.groups.filter(name="Instructor").exists():
             if value.created_by != user:
                 raise serializers.ValidationError("You can only assign assessments to your own courses.")
             return value
-        else:
-            raise serializers.ValidationError("You are not allowed to assign a course.")
-
+        raise serializers.ValidationError("You are not allowed to assign a course.")
     
     def validate(self, attrs):
-        """
-        Validate that the assessment is linked to either a module or a quiz,
-        but not both. This mirrors the model's clean() method.
-        """
-        module = attrs.get('module')
-        quiz = attrs.get('quiz')
-
-        if not module and not quiz:
-            raise serializers.ValidationError("Assessment must be linked to either a module or a quiz.")
-        if module and quiz:
-            raise serializers.ValidationError("Assessment cannot be linked to both module and quiz.")
-
+        if not attrs.get('module'):
+            raise serializers.ValidationError("Assessment must be linked to a module.")
         return attrs
     
     def create(self, validated_data):
-        user = self.context['request'].user
         module_data = validated_data.pop('module', None)
-        quiz_data = validated_data.pop('quiz', None)
 
-        # Create the assessment instance first
-        if 'course' not in validated_data or validated_data['course'] is None:
-            if user.groups.filter(name="Instructor").exists():
-                # Assign first course created by instructor automatically
-                course = models.Course.objects.filter(created_by=user).first()
-                if not course:
-                    raise serializers.ValidationError("Instructor has no course to assign.")
-                validated_data['course'] = course
-            else:
-                raise serializers.ValidationError("Course is required.")
-            
-        assessment = models.Assessment.objects.create(**validated_data)
+        # Create assessment first with quiz or empty module
+        assessment = models.Assessment(**validated_data)
 
         # If module data is provided, create Module and assign to assessment
         if module_data:
@@ -214,36 +158,9 @@ class AssessmentSerializer(serializers.ModelSerializer):
                         content_type=content_data['content_type'],
                         file=content_data.get('file')
                     )
-                    
-        # If quiz data is provided, create Quiz and assign to assessment
-        if quiz_data:
-            questions_data = quiz_data.pop('questions', [])
-            quiz=models.Quiz.objects.create(
-                title=quiz_data['title'],
-                description=quiz_data.get('description',''),
-                course=assessment.course,
-                created_by=self.context['request'].user
-            )
-            assessment.quiz=quiz
-            assessment.save()  # Save again to update quiz field
-            
-            #create questions and answers
-            for question_data in questions_data:
-                answers_data = question_data.pop('answers', [])
-                question = models.Question.objects.create(
-                    quiz=quiz,
-                    text=question_data['text']
-                )
-                for answer_data in answers_data:
-                    models.Answer.objects.create(
-                        question=question,
-                        text=answer_data['text'],
-                        is_correct=answer_data.get('is_correct', False)
-                    )
 
         return assessment
 
-    
 
     def update(self, instance, validated_data):
         """
@@ -338,3 +255,148 @@ class EmailLogSerializer(serializers.ModelSerializer):
         # Optional: make user read-only if email logs track sender
 
 
+class QuizAnswerSerializer(serializers.ModelSerializer):
+    question = serializers.PrimaryKeyRelatedField(
+        queryset=models.Question.objects.all(),
+        write_only=True
+    )
+
+    class Meta:
+        model = models.Answer
+        fields = ['question', 'text', 'is_correct']
+
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        request = self.context.get('request')
+        if request and request.user.groups.filter(name='Student').exists():
+            rep.pop('is_correct', None)
+        return rep
+        
+class QuizQuestionSerializer(serializers.ModelSerializer):
+    answers = QuizAnswerSerializer(many=True, required=False)
+    class Meta:
+        model=models.Question
+        fields=['text','answers']
+    
+    def validate_answers(self, value):
+        """
+        Ensure exactly 4 answers and only one correct answer.
+        """
+        if len(value) != 4:
+            raise serializers.ValidationError("Each question must have exactly 4 answers.")
+        
+        correct_count = sum(1 for ans in value if ans.get('is_correct'))
+        if correct_count != 1:
+            raise serializers.ValidationError("There must be exactly one correct answer per question.")
+        
+        return value
+        
+class QuizSerializer(serializers.ModelSerializer):
+    questions = QuizQuestionSerializer(many=True, required=False)
+
+    class Meta:
+        model = models.Quiz
+        fields = ['id', 'course', 'title', 'description', 'created_by', 'questions']
+        read_only_fields = ['created_by']
+
+    def create(self, validated_data):
+        questions_data = validated_data.pop('questions', [])
+        user = self.context['request'].user
+        validated_data['created_by'] = user
+
+        quiz = super().create(validated_data)
+
+        # 🔹 Create nested questions & answers
+        for question_data in questions_data:
+            answers_data = question_data.pop('answers', [])
+            question = models.Question.objects.create(quiz=quiz, **question_data)
+            for answer_data in answers_data:
+                models.Answer.objects.create(question=question, **answer_data)
+
+        return quiz
+
+    def update(self, instance, validated_data):
+        questions_data = validated_data.pop('questions', [])
+
+        # Update main quiz fields
+        instance = super().update(instance, validated_data)
+
+        if questions_data:
+            # 🔹 Remove existing questions & answers
+            instance.question_set.all().delete()
+
+            # 🔹 Recreate questions & answers
+            for question_data in questions_data:
+                answers_data = question_data.pop('answers', [])
+                question = models.Question.objects.create(quiz=instance, **question_data)
+                for answer_data in answers_data:
+                    models.Answer.objects.create(question=question, **answer_data)
+
+        return instance
+
+    
+    
+class StudentAnswerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.StudentAnswer
+        fields = ['question', 'selected_answer']
+
+    def validate(self, data):
+        question = data['question']
+        answer = data.get('selected_answer')
+
+        # Ensure answer belongs to the question
+        if answer and answer.question != question:
+            raise serializers.ValidationError("Selected answer does not belong to the question.")
+        return data
+
+
+class StudentSubmissionSerializer(serializers.ModelSerializer):
+    answers = StudentAnswerSerializer(many=True)
+    percentage = serializers.SerializerMethodField()
+    passed = serializers.SerializerMethodField()
+
+    class Meta:
+        model = models.StudentSubmission
+        fields = ['quiz', 'answers', 'score', 'percentage', 'passed']
+        read_only_fields = ['score', 'percentage', 'passed']
+
+    def validate_quiz(self, value):
+        student = self.context['request'].user
+
+        if not models.Enrollment.objects.filter(student=student, course=value.course).exists():
+            raise serializers.ValidationError("You are not enrolled in this course.")
+
+        if models.StudentSubmission.objects.filter(student=student, quiz=value).exists():
+            raise serializers.ValidationError("You have already submitted this quiz.")
+
+        return value
+
+    def create(self, validated_data):
+        answers_data = validated_data.pop('answers')
+        student = self.context['request'].user
+
+        # Create submission
+        submission = models.StudentSubmission.objects.create(student=student, **validated_data)
+
+        score = 0
+        total_questions = submission.quiz.questions.count()  # fixed related_name
+
+        for ans_data in answers_data:
+            student_answer = models.StudentAnswer.objects.create(submission=submission, **ans_data)
+            if student_answer.selected_answer and student_answer.selected_answer.is_correct:
+                score += 1
+
+        # Update submission
+        submission.score = score
+        submission.percentage = round((score / total_questions) * 100, 2) if total_questions > 0 else 0
+        submission.passed = (score / total_questions) >= 0.5 if total_questions > 0 else False
+        submission.save()
+
+        return submission
+
+    def get_percentage(self, obj):
+        return obj.percentage
+
+    def get_passed(self, obj):
+        return obj.passed

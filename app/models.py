@@ -95,7 +95,9 @@ class StudentSubmission(models.Model):
     student = models.ForeignKey(User, on_delete=models.CASCADE, limit_choices_to={'role': 'student'})
     quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE)
     submitted_at = models.DateTimeField(auto_now_add=True)
-
+    score = models.FloatField(default=0)
+    percentage = models.FloatField(default=0)
+    passed = models.BooleanField(default=False)
     def __str__(self):
         return f"Submission by {self.student.username} for {self.quiz.title}"
 
@@ -104,15 +106,12 @@ class StudentAnswer(models.Model):
     question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='student_answers')
     selected_answer = models.ForeignKey(Answer, on_delete=models.CASCADE, null=True, blank=True)
 
-    class Meta:
-        unique_together = ('submission', 'question')
 
 
 # Assessment model
 class Assessment(BaseModel):
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='assessments')
     module = models.ForeignKey(Module, on_delete=models.CASCADE, related_name='assessments', null=True, blank=True)
-    quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='assessments', null=True, blank=True)
     title = models.CharField(max_length=255)
     due_date = models.DateTimeField()
     max_score = models.IntegerField()
@@ -120,12 +119,6 @@ class Assessment(BaseModel):
     def __str__(self):
         return self.title
     
-     #  Validation to ensure only module OR quiz is selected
-    def clean(self):
-        if not self.module and not self.quiz:
-            raise ValidationError("Assessment must be linked to either a module or a quiz.")
-        if self.module and self.quiz:
-            raise ValidationError("Assessment cannot be linked to both module and quiz.")
         
     def save(self, *args, **kwargs):  # FIXED: enforce validation
         self.full_clean()
