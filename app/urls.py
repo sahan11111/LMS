@@ -11,6 +11,9 @@ router.register('Sponsorship',views.SponsorshipViewSet)
 router.register('Notification',views.NotificationViewSet)
 router.register('EmailLog',views.EmailLogViewSet)
 router.register('Dashboard',views.DashboardViewSet,basename='dashboard')
+router.register('Quiz',views.QuizViewSet,basename='quiz')
 urlpatterns = [
     path('', include(router.urls)),
+    path("QuizSubmissions/", views.StudentSubmissionView.as_view(), name="student-submissions"),
+    path("QuizSubmissions/<int:pk>/", views.StudentSubmissionView.as_view(), name="student-submission-detail"),
 ]

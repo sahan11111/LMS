@@ -87,7 +87,7 @@ class AssessmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Assessment
          # Include all relevant fields, including module and quiz
-        fields = ['id', 'course','module','quiz' ,'title', 'due_date', 'max_score']
+        fields = ['id', 'course','module' ,'title', 'due_date', 'max_score']
 
     def get_fields(self):
         """
@@ -118,18 +118,8 @@ class AssessmentSerializer(serializers.ModelSerializer):
         raise serializers.ValidationError("You are not allowed to assign a course.")
     
     def validate(self, attrs):
-        """
-        Validate that the assessment is linked to either a module or a quiz,
-        but not both. This mirrors the model's clean() method.
-        """
-        module = attrs.get('module')
-        quiz = attrs.get('quiz')
-
-        if not module and not quiz:
-            raise serializers.ValidationError("Assessment must be linked to either a module or a quiz.")
-        if module and quiz:
-            raise serializers.ValidationError("Assessment cannot be linked to both module and quiz.")
-
+        if not attrs.get('module'):
+            raise serializers.ValidationError("Assessment must be linked to a module.")
         return attrs
     
     def create(self, validated_data):
@@ -171,41 +161,6 @@ class AssessmentSerializer(serializers.ModelSerializer):
 
         return assessment
 
-    
-    # def create(self, validated_data):
-    #     """
-    #     Create Assessment and optionally create a linked Module.
-    #     """
-    #     module_data = validated_data.pop('module', None)
-    #     assessment = models.Assessment.objects.create(**validated_data)
-
-    #     if module_data:
-    #         # Create Module
-    #         lessons_data = module_data.pop('lessons', [])
-    #         module = models.Module.objects.create(
-    #             title=module_data['title'],
-    #             description=module_data.get('description', ''),
-    #             course=assessment.course,
-    #             created_by=self.context['request'].user
-    #         )
-    #         assessment.module = module
-    #         assessment.save()
-
-    #         for lesson_data in lessons_data:
-    #             lesson_contents_data = lesson_data.pop('lesson_contents', [])
-    #             lesson = models.Lesson.objects.create(
-    #                 module=module,
-    #                 title=lesson_data['title'],
-    #                 content=lesson_data.get('content', '')
-    #             )
-    #             for content_data in lesson_contents_data:
-    #                 models.LessonContent.objects.create(
-    #                     lesson=lesson,
-    #                     title=content_data['title'],
-    #                     content_type=content_data['content_type'],
-    #                     file=content_data.get('file', None)
-    #                 )
-    #     return assessment
 
     def update(self, instance, validated_data):
         """
@@ -300,3 +255,148 @@ class EmailLogSerializer(serializers.ModelSerializer):
         # Optional: make user read-only if email logs track sender
 
 
+class QuizAnswerSerializer(serializers.ModelSerializer):
+    question = serializers.PrimaryKeyRelatedField(
+        queryset=models.Question.objects.all(),
+        write_only=True
+    )
+
+    class Meta:
+        model = models.Answer
+        fields = ['question', 'text', 'is_correct']
+
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        request = self.context.get('request')
+        if request and request.user.groups.filter(name='Student').exists():
+            rep.pop('is_correct', None)
+        return rep
+        
+class QuizQuestionSerializer(serializers.ModelSerializer):
+    answers = QuizAnswerSerializer(many=True, required=False)
+    class Meta:
+        model=models.Question
+        fields=['text','answers']
+    
+    def validate_answers(self, value):
+        """
+        Ensure exactly 4 answers and only one correct answer.
+        """
+        if len(value) != 4:
+            raise serializers.ValidationError("Each question must have exactly 4 answers.")
+        
+        correct_count = sum(1 for ans in value if ans.get('is_correct'))
+        if correct_count != 1:
+            raise serializers.ValidationError("There must be exactly one correct answer per question.")
+        
+        return value
+        
+class QuizSerializer(serializers.ModelSerializer):
+    questions = QuizQuestionSerializer(many=True, required=False)
+
+    class Meta:
+        model = models.Quiz
+        fields = ['id', 'course', 'title', 'description', 'created_by', 'questions']
+        read_only_fields = ['created_by']
+
+    def create(self, validated_data):
+        questions_data = validated_data.pop('questions', [])
+        user = self.context['request'].user
+        validated_data['created_by'] = user
+
+        quiz = super().create(validated_data)
+
+        # 🔹 Create nested questions & answers
+        for question_data in questions_data:
+            answers_data = question_data.pop('answers', [])
+            question = models.Question.objects.create(quiz=quiz, **question_data)
+            for answer_data in answers_data:
+                models.Answer.objects.create(question=question, **answer_data)
+
+        return quiz
+
+    def update(self, instance, validated_data):
+        questions_data = validated_data.pop('questions', [])
+
+        # Update main quiz fields
+        instance = super().update(instance, validated_data)
+
+        if questions_data:
+            # 🔹 Remove existing questions & answers
+            instance.question_set.all().delete()
+
+            # 🔹 Recreate questions & answers
+            for question_data in questions_data:
+                answers_data = question_data.pop('answers', [])
+                question = models.Question.objects.create(quiz=instance, **question_data)
+                for answer_data in answers_data:
+                    models.Answer.objects.create(question=question, **answer_data)
+
+        return instance
+
+    
+    
+class StudentAnswerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.StudentAnswer
+        fields = ['question', 'selected_answer']
+
+    def validate(self, data):
+        question = data['question']
+        answer = data.get('selected_answer')
+
+        # Ensure answer belongs to the question
+        if answer and answer.question != question:
+            raise serializers.ValidationError("Selected answer does not belong to the question.")
+        return data
+
+
+class StudentSubmissionSerializer(serializers.ModelSerializer):
+    answers = StudentAnswerSerializer(many=True)
+    percentage = serializers.SerializerMethodField()
+    passed = serializers.SerializerMethodField()
+
+    class Meta:
+        model = models.StudentSubmission
+        fields = ['quiz', 'answers', 'score', 'percentage', 'passed']
+        read_only_fields = ['score', 'percentage', 'passed']
+
+    def validate_quiz(self, value):
+        student = self.context['request'].user
+
+        if not models.Enrollment.objects.filter(student=student, course=value.course).exists():
+            raise serializers.ValidationError("You are not enrolled in this course.")
+
+        if models.StudentSubmission.objects.filter(student=student, quiz=value).exists():
+            raise serializers.ValidationError("You have already submitted this quiz.")
+
+        return value
+
+    def create(self, validated_data):
+        answers_data = validated_data.pop('answers')
+        student = self.context['request'].user
+
+        # Create submission
+        submission = models.StudentSubmission.objects.create(student=student, **validated_data)
+
+        score = 0
+        total_questions = submission.quiz.questions.count()  # fixed related_name
+
+        for ans_data in answers_data:
+            student_answer = models.StudentAnswer.objects.create(submission=submission, **ans_data)
+            if student_answer.selected_answer and student_answer.selected_answer.is_correct:
+                score += 1
+
+        # Update submission
+        submission.score = score
+        submission.percentage = round((score / total_questions) * 100, 2) if total_questions > 0 else 0
+        submission.passed = (score / total_questions) >= 0.5 if total_questions > 0 else False
+        submission.save()
+
+        return submission
+
+    def get_percentage(self, obj):
+        return obj.percentage
+
+    def get_passed(self, obj):
+        return obj.passed

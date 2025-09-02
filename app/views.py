@@ -10,6 +10,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.exceptions import PermissionDenied
 from .pagination import ProductPageNumberPagination
+from rest_framework.generics import ListCreateAPIView, RetrieveAPIView
 
 class CourseViewSet(viewsets.ModelViewSet):
     queryset = Course.objects.all().order_by("id")
@@ -528,3 +529,70 @@ class EmailLogViewSet(viewsets.ModelViewSet):
 
         # Users see only their own email logs
         return self.queryset.filter(user=user)
+
+
+class QuizViewSet(viewsets.ModelViewSet):
+    queryset = Quiz.objects.all().order_by("id")
+    serializer_class = QuizSerializer
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['title']
+
+    def get_permissions(self):
+        user = self.request.user
+        if user.groups.filter(name="Admin").exists():
+            return [IsAdmin()]
+        elif user.groups.filter(name="Instructor").exists():
+            return [IsInstructor()]
+        return [IsAuthenticated()]
+
+    def get_queryset(self):
+        user = self.request.user
+        if getattr(self, 'swagger_fake_view', False) or not user.is_authenticated:
+            return Quiz.objects.none()
+
+        if user.groups.filter(name="Admin").exists():
+            return self.queryset.all()
+        elif user.groups.filter(name="Instructor").exists():
+            return self.queryset.filter(course__created_by=user)
+        elif user.groups.filter(name="Student").exists():
+            enrolled_courses = models.Enrollment.objects.filter(student=user).values_list('course', flat=True)
+            return self.queryset.filter(course__in=enrolled_courses)
+        return Quiz.objects.none()
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        course = serializer.validated_data.get('course')
+
+        if user.groups.filter(name="Instructor").exists():
+            if course.created_by != user:
+                raise serializers.ValidationError("Instructors can only create quizzes for their own courses.")
+            serializer.save(created_by=user)
+        else:
+            serializer.save()
+
+
+class StudentSubmissionView(ListCreateAPIView, RetrieveAPIView):
+    """
+    Student can create (POST) a submission, list all their submissions (GET),
+    and retrieve a single submission by ID (GET /<id>/).
+    """
+    serializer_class = StudentSubmissionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+
+        # Prevent errors when generating Swagger docs or if user is anonymous
+        if getattr(self, 'swagger_fake_view', False) or not user.is_authenticated:
+            return models.StudentSubmission.objects.none()
+
+        if user.groups.filter(name="Admin").exists():
+            return models.StudentSubmission.objects.all()
+
+        if user.groups.filter(name="Instructor").exists():
+            # Instructors can see submissions for their own courses
+            return models.StudentSubmission.objects.filter(quiz__course__created_by=user)
+
+        # Students see only their own submissions
+        return models.StudentSubmission.objects.filter(student=user)
+
