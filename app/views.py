@@ -476,26 +476,38 @@ class DashboardViewSet(viewsets.ViewSet):
 
 
 class NotificationViewSet(viewsets.ModelViewSet):
-    queryset = models.Notification.objects.all()
+    queryset = models.Notification.objects.all()  # must define this
     serializer_class = NotificationSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         user = self.request.user
 
+        # Swagger or anonymous users → return empty queryset
         if getattr(self, 'swagger_fake_view', False) or not user.is_authenticated:
-            return self.queryset.none()
+            return models.Notification.objects.none()
 
+        # Admin → all notifications
         if user.groups.filter(name="Admin").exists():
-            return self.queryset.all()
-        if user.groups.filter(name="Instructor").exists():
-            return self.queryset.filter(course__created_by=user)
-        if user.groups.filter(name="Student").exists():
-            return self.queryset.filter(recipient=user)
-        if user.groups.filter(name="Sponsor").exists():
-            return self.queryset.filter(student__sponsorship__sponsor=user)
+            return models.Notification.objects.all()
 
-        return self.queryset.none()
+        # Instructor → notifications for students enrolled in their courses
+        if user.groups.filter(name="Instructor").exists():
+            return models.Notification.objects.filter(
+                user__enrollment__course__created_by=user
+            ).distinct()
+
+        # Student → their own notifications
+        if user.groups.filter(name="Student").exists():
+            return models.Notification.objects.filter(user=user)
+
+        # Sponsor → notifications for their sponsored students
+        if user.groups.filter(name="Sponsor").exists():
+            return models.Notification.objects.filter(
+                user__sponsorship__sponsor=user
+            ).distinct()
+
+        return models.Notification.objects.none()
 
     def perform_create(self, serializer):
         if not self.request.user.groups.filter(name="Admin").exists():
