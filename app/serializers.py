@@ -252,6 +252,7 @@ class EmailLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.EmailLog
         fields = '__all__'
+        read_only_fields = ['user']
         # Optional: make user read-only if email logs track sender
 
 
