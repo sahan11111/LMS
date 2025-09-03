@@ -476,7 +476,7 @@ class DashboardViewSet(viewsets.ViewSet):
 
 
 class NotificationViewSet(viewsets.ModelViewSet):
-    queryset = Notification.objects.all()
+    queryset = models.Notification.objects.all()
     serializer_class = NotificationSerializer
     permission_classes = [IsAuthenticated]
 
@@ -484,51 +484,43 @@ class NotificationViewSet(viewsets.ModelViewSet):
         user = self.request.user
 
         if getattr(self, 'swagger_fake_view', False) or not user.is_authenticated:
-            return Notification.objects.none()
+            return self.queryset.none()
 
-        # Admin → all notifications
         if user.groups.filter(name="Admin").exists():
-            return Notification.objects.all()
-
-        # Instructor → notifications related to their courses/students
+            return self.queryset.all()
         if user.groups.filter(name="Instructor").exists():
-            return Notification.objects.filter(course__created_by=user)
-
-        # Student → only their notifications
+            return self.queryset.filter(course__created_by=user)
         if user.groups.filter(name="Student").exists():
-            return Notification.objects.filter(recipient=user)
-
-        # Sponsor → notifications for their sponsored students
+            return self.queryset.filter(recipient=user)
         if user.groups.filter(name="Sponsor").exists():
-            return Notification.objects.filter(student__sponsorship__sponsor=user)
+            return self.queryset.filter(student__sponsorship__sponsor=user)
 
-        return Notification.objects.none()
+        return self.queryset.none()
 
     def perform_create(self, serializer):
-        user = self.request.user
-        if user.groups.filter(name="Admin").exists():
-            serializer.save()
-        else:
+        if not self.request.user.groups.filter(name="Admin").exists():
             raise PermissionDenied("Only Admins can create notifications.")
+        serializer.save()
     
 class EmailLogViewSet(viewsets.ModelViewSet):
-    queryset = EmailLog.objects.all()
+    queryset = models.EmailLog.objects.all()  #  must define this
     serializer_class = EmailLogSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         user = self.request.user
 
-        # No data for swagger or unauthenticated
+        # Short-circuit for swagger or anonymous users
         if getattr(self, 'swagger_fake_view', False) or not user.is_authenticated:
-            return EmailLog.objects.none()
+            return models.EmailLog.objects.none()  #  use model directly if queryset may be None
 
-        # Admin sees all email logs
+        # Admin sees all
         if user.groups.filter(name="Admin").exists():
-            return self.queryset.all()
+            return models.EmailLog.objects.all()
 
-        # Users see only their own email logs
-        return self.queryset.filter(user=user)
+        # Others see only their own email logs
+        return models.EmailLog.objects.filter(user=user)
+
 
 
 class QuizViewSet(viewsets.ModelViewSet):
