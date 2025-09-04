@@ -346,6 +346,10 @@ class SponsorViewSet(viewsets.ModelViewSet):
     
     def get_permissions(self):
         user = self.request.user
+        
+        # If not logged in → deny
+        if not user or not user.is_authenticated:
+            return [IsAuthenticated()]  # Returns 401 instead of crashing
 
         # Admin full access
         if user.groups.filter(name="Admin").exists():
@@ -375,7 +379,7 @@ class SponsorViewSet(viewsets.ModelViewSet):
 
         # Sponsor → only their Sponsors
         if user.groups.filter(name="Sponsor").exists():
-            return Sponsor.objects.filter(sponsor=user)
+            return Sponsor.objects.filter(user=user)
 
         # Instructor/Student → no access
         return Sponsor.objects.none()
@@ -385,7 +389,7 @@ class SponsorViewSet(viewsets.ModelViewSet):
         user = self.request.user
 
         if user.groups.filter(name="Sponsor").exists():
-            serializer.save(sponsor=user)
+            serializer.save(user=user)
         else:
             raise PermissionDenied("Only sponsors can create sponsorships.")
     
@@ -393,6 +397,7 @@ class SponsorshipViewSet(viewsets.ModelViewSet):
     queryset = Sponsorship.objects.all()
     serializer_class = SponsorshipSerializer
     permission_classes = [IsAuthenticated]  # default
+    
     def get_permissions(self):
         user = self.request.user
 
@@ -424,19 +429,18 @@ class SponsorshipViewSet(viewsets.ModelViewSet):
 
         # Sponsor → only their sponsorships
         if user.groups.filter(name="Sponsor").exists():
-            return Sponsorship.objects.filter(sponsor=user)
+            # Sponsors see their sponsorships + pending requests
+            return Sponsorship.objects.filter(sponsor__user=user) | Sponsorship.objects.filter(status="pending")
 
+        # Student → only sponsorships for themselves
+        if user.groups.filter(name="Student").exists():
+            return Sponsorship.objects.filter(student=user)
+        
         # Instructor/Student → no access
         return Sponsorship.objects.none()
 
     def perform_create(self, serializer):
-        """Auto-assign sponsor when creating a sponsorship."""
-        user = self.request.user
-
-        if user.groups.filter(name="Sponsor").exists():
-            serializer.save(sponsor=user)
-        else:
-            raise PermissionDenied("Only sponsors can create sponsorships.")
+        serializer.save()  
     
 class DashboardViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
