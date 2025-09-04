@@ -220,21 +220,118 @@ class SponsorshipSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Sponsorship
         fields = ['id', 'sponsor', 'student', 'amount', 'status', 'utilization', 'created_at']
-        read_only_fields = ['sponsor']  # auto-assign
-
-    def validate_sponsor(self, value):
-        if value.user.role != 'sponsor':
-            raise serializers.ValidationError("The selected user is not a sponsor.")
-        return value
+        read_only_fields = ['created_at']  # sponsor is selectable when student applies
 
     def validate_student(self, value):
         if value.role != 'student':
             raise serializers.ValidationError("The selected user is not a student.")
         return value
 
+    def validate_sponsor(self, value):
+        if value.user.role != 'sponsor':
+            raise serializers.ValidationError("The selected user is not a sponsor.")
+        return value
+
+    def validate_amount(self, value):
+        request = self.context['request']
+        user = request.user
+
+        if user.role == 'sponsor':  # when approving directly
+            sponsor = models.Sponsor.objects.get(user=user)
+            if sponsor.funds_provided < value:
+                raise serializers.ValidationError("Insufficient funds in sponsor account.")
+        return value
+
     def create(self, validated_data):
-        validated_data['sponsor'] = self.context['request'].user  # auto-assign
-        return super().create(validated_data)
+        user = self.context['request'].user
+
+        # Student applies → pending
+        if user.role == 'student':
+            validated_data['status'] = 'pending'
+            validated_data['student'] = user
+            sponsorship = super().create(validated_data)
+
+            # Notify student
+            models.Notification.objects.create(
+                user=user,
+                message=f"Your sponsorship application to {sponsorship.sponsor.company_name} is pending review."
+            )
+
+            # Notify specific sponsor
+            models.Notification.objects.create(
+                user=sponsorship.sponsor.user,
+                message=f"New sponsorship request from {user.username} for amount {sponsorship.amount}."
+            )
+
+            return sponsorship
+
+        # Sponsor directly funds → approve + deduct
+        elif user.role == 'sponsor':
+            sponsor = models.Sponsor.objects.get(user=user)
+            amount = validated_data['amount']
+
+            if sponsor.funds_provided < amount:
+                raise serializers.ValidationError("Not enough funds to approve this sponsorship.")
+
+            sponsor.funds_provided -= amount
+            sponsor.save()
+
+            validated_data['sponsor'] = sponsor
+            validated_data['status'] = 'approved'
+            sponsorship = super().create(validated_data)
+
+            # Notify student
+            models.Notification.objects.create(
+                user=sponsorship.student,
+                message=f"Your sponsorship request has been approved for {sponsorship.amount}."
+            )
+            return sponsorship
+
+        raise serializers.ValidationError("Only students can apply or sponsors can approve sponsorships.")
+
+    def update(self, instance, validated_data):
+        user = self.context['request'].user
+
+        if user.role == 'sponsor' and instance.status == 'pending':
+            action = validated_data.get("status")
+
+            # Approve request
+            if action == 'approved':
+                sponsor = models.Sponsor.objects.get(user=user)
+                amount = validated_data.get('amount', instance.amount)
+
+                if sponsor.funds_provided < amount:
+                    raise serializers.ValidationError("Not enough funds to approve this sponsorship.")
+
+                sponsor.funds_provided -= amount
+                sponsor.save()
+
+                instance.sponsor = sponsor
+                instance.amount = amount
+                instance.status = 'approved'
+                instance.save()
+
+                # Notify student
+                models.Notification.objects.create(
+                    user=instance.student,
+                    message=f"Your sponsorship request has been approved for {instance.amount}."
+                )
+                return instance
+
+            # Reject request
+            elif action == 'rejected':
+                instance.status = 'rejected'
+                instance.save()
+
+                # Notify student
+                models.Notification.objects.create(
+                    user=instance.student,
+                    message=f"Your sponsorship request to {instance.sponsor.company_name} has been rejected."
+                )
+                return instance
+
+        return super().update(instance, validated_data)
+
 
 # Notification Serializer
 class NotificationSerializer(serializers.ModelSerializer):
