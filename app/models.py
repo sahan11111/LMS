@@ -161,7 +161,11 @@ class Sponsorship(BaseModel):
     sponsor = models.ForeignKey(Sponsor, on_delete=models.CASCADE)
     student = models.ForeignKey(User, on_delete=models.CASCADE, limit_choices_to={'role': 'student'})
     amount = models.DecimalField(max_digits=10, decimal_places=2)
-    status = models.CharField(max_length=50, choices=[('active', 'Active'), ('completed', 'Completed')])
+    status = models.CharField(
+        max_length=20,
+        choices=[("pending", "Pending"), ("approved", "Approved"), ("rejected", "Rejected")],
+        default="pending"
+    )
     utilization = models.DecimalField(max_digits=5, decimal_places=2, default=0.0)
 
 # Notification model
