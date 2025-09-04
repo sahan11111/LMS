@@ -346,6 +346,10 @@ class SponsorViewSet(viewsets.ModelViewSet):
     
     def get_permissions(self):
         user = self.request.user
+        
+        # If not logged in → deny
+        if not user or not user.is_authenticated:
+            return [IsAuthenticated()]  # Returns 401 instead of crashing
 
         # Admin full access
         if user.groups.filter(name="Admin").exists():
@@ -375,7 +379,7 @@ class SponsorViewSet(viewsets.ModelViewSet):
 
         # Sponsor → only their Sponsors
         if user.groups.filter(name="Sponsor").exists():
-            return Sponsor.objects.filter(sponsor=user)
+            return Sponsor.objects.filter(user=user)
 
         # Instructor/Student → no access
         return Sponsor.objects.none()
@@ -385,7 +389,7 @@ class SponsorViewSet(viewsets.ModelViewSet):
         user = self.request.user
 
         if user.groups.filter(name="Sponsor").exists():
-            serializer.save(sponsor=user)
+            serializer.save(user=user)
         else:
             raise PermissionDenied("Only sponsors can create sponsorships.")
     

@@ -204,6 +204,14 @@ class SponsorSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Sponsor
         fields = ['id', 'user', 'company_name', 'funds_provided']
+        read_only_fields = ['user']  # auto-assign
+        # Make created_by read-only for non-admins
+    def get_fields(self):
+        fields = super().get_fields()
+        user = self.context['request'].user
+        if not user.groups.filter(name="Admin").exists():  #Non-admins cannot edit user
+            fields['user'].read_only = True
+        return fields
 
     def validate_user(self, value):
         # Validate that the user assigned to this sponsor is actually a sponsor
@@ -212,7 +220,8 @@ class SponsorSerializer(serializers.ModelSerializer):
         return value
     
     def create(self, validated_data):
-        validated_data['sponsor'] = self.context['request'].user  
+        if 'user' not in validated_data:
+            validated_data['user'] = self.context['request'].user  # auto-assign the user
         return super().create(validated_data)
 
 # Sponsorship Serializer
