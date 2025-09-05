@@ -7,14 +7,14 @@ from .models import Enrollment, Notification, EmailLog
 @receiver(post_save, sender=Enrollment)
 def send_enrollment_notification(sender, instance, created, **kwargs):
     if created:
-        # 1️⃣ Create Notification
+        # Create Notification
         Notification.objects.create(
             user=instance.student,
             message=f"You have successfully enrolled in {instance.course.title}.",
             type="Enrollment"
         )
 
-        # 2️⃣ Create EmailLog
+        # Create EmailLog
         subject = "Course Enrollment Confirmation"
         body = (
             f"Hello {instance.student.username},\n\n"
@@ -28,7 +28,7 @@ def send_enrollment_notification(sender, instance, created, **kwargs):
             body=body
         )
 
-        # 3️⃣ Send real email
+        # Send real email
         send_mail(
             subject,
             body,

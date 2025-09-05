@@ -371,7 +371,7 @@ class QuizAnswerSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Answer
         fields = ['question', 'text', 'is_correct']
-
+    
     def to_representation(self, instance):
         rep = super().to_representation(instance)
         request = self.context.get('request')
@@ -440,6 +440,7 @@ class QuizSerializer(serializers.ModelSerializer):
                     models.Answer.objects.create(question=question, **answer_data)
 
         return instance
+    
 
     
     
