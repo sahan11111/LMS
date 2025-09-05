@@ -448,7 +448,7 @@ class DashboardViewSet(viewsets.ViewSet):
     def list(self, request):
         user = request.user
         data = {}
-
+        # Admin dashboard
         if user.groups.filter(name="Admin").exists():
             data['total_users'] = User.objects.count()
             data['total_courses'] = Course.objects.count()
@@ -457,23 +457,43 @@ class DashboardViewSet(viewsets.ViewSet):
             data['total_submissions'] = Submission.objects.count()
             data['total_sponsors'] = Sponsor.objects.count()
             data['total_sponsorships'] = Sponsorship.objects.count()
+            data['total_notifications'] = Notification.objects.count()
+            data['total_email_logs'] = EmailLog.objects.count()
+            data['total_quizzes'] = Quiz.objects.count()
 
+        # Instructor dashboard
         elif user.groups.filter(name="Instructor").exists():
             data['my_courses'] = Course.objects.filter(created_by=user).count()
             data['my_enrollments'] = Enrollment.objects.filter(course__created_by=user).count()
             data['my_assessments'] = Assessment.objects.filter(course__created_by=user).count()
             data['my_submissions'] = Submission.objects.filter(assessment__course__created_by=user).count()
-
+            data['my_notifications'] = Notification.objects.filter(user__enrollment__course__created_by=user).distinct().count()
+            data['my_quizzes'] = Quiz.objects.filter(course__created_by=user).count()
+            
+        # Student dashboard
         elif user.role == 'student':
             data['my_enrollments'] = Enrollment.objects.filter(student=user).count()
             data['my_courses'] = Course.objects.filter(enrollment__student=user).distinct().count()
             data['my_assessments'] = Assessment.objects.filter(course__enrollment__student=user).distinct().count()
             data['my_submissions'] = Submission.objects.filter(student=user).count()
-
+            data['my_notifications'] = Notification.objects.filter(user=user).count()
+            data['my_quizzes'] = Quiz.objects.filter(course__enrollment__student=user).distinct().count()
+            data['my_passed_quizzes'] = Quiz.objects.filter(studentsubmission__student=user, studentsubmission__passed=True).distinct().count()
+            data['my_pending_sponsorships'] = Sponsorship.objects.filter(student=user, status='pending').count()
+            data['my_approved_sponsorships'] = Sponsorship.objects.filter(student=user, status='approved').count()
+            data['my_rejected_sponsorships'] = Sponsorship.objects.filter(student=user, status='rejected').count()      
+            data['my_sponsors'] = Sponsor.objects.filter(sponsorship__student=user).distinct().count()
+            
+        # Sponsor dashboard
         elif user.role == 'sponsor':
             sponsored_students = User.objects.filter(sponsorship__sponsor__user=user).distinct()
             data['sponsored_students'] = sponsored_students.count()
             data['sponsorships'] = Sponsorship.objects.filter(sponsor__user=user).count()
+            data['approved_sponsorships'] = Sponsorship.objects.filter(sponsor__user=user, status='approved').count()
+            data['pending_sponsorships'] = Sponsorship.objects.filter(sponsor__user=user, status='pending').count()
+            data['rejected_sponsorships'] = Sponsorship.objects.filter(sponsor__user=user, status='rejected').count()
+            data['total_funds_provided'] = Sponsorship.objects.filter(sponsor__user=user, status='approved').aggregate(total=models.Sum('amount'))['total'] or 0
+            data['sponsored_students_list'] = [{'id': student.id, 'username': student.username} for student in sponsored_students]  
 
         return Response(data)
     
@@ -547,21 +567,28 @@ class QuizViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         user = self.request.user
+        
+        # Admin has full access
         if user.groups.filter(name="Admin").exists():
             return [IsAdmin()]
+        # Instructor can create/update/delete own quizzes
         elif user.groups.filter(name="Instructor").exists():
             return [IsInstructor()]
         return [IsAuthenticated()]
 
     def get_queryset(self):
         user = self.request.user
+        
+        # Prevent errors when generating Swagger docs or if user is anonymous
         if getattr(self, 'swagger_fake_view', False) or not user.is_authenticated:
             return Quiz.objects.none()
-
+        # Admin sees all
         if user.groups.filter(name="Admin").exists():
             return self.queryset.all()
+        # Instructor can only see quizzes for their own courses
         elif user.groups.filter(name="Instructor").exists():
             return self.queryset.filter(course__created_by=user)
+        # Student can see quizzes only in courses they are enrolled in
         elif user.groups.filter(name="Student").exists():
             enrolled_courses = models.Enrollment.objects.filter(student=user).values_list('course', flat=True)
             return self.queryset.filter(course__in=enrolled_courses)
@@ -571,6 +598,7 @@ class QuizViewSet(viewsets.ModelViewSet):
         user = self.request.user
         course = serializer.validated_data.get('course')
 
+        # Instructors can only create quizzes for their own courses
         if user.groups.filter(name="Instructor").exists():
             if course.created_by != user:
                 raise serializers.ValidationError("Instructors can only create quizzes for their own courses.")
