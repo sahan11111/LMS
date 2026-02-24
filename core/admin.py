@@ -1,18 +1,13 @@
 from django.contrib import admin
-from .models import *
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
-    list_display = ('id', 'username', 'email', 'role', 'is_staff', 'is_active')
-    search_fields = ('username', 'email', 'role')
-    list_filter = ('role', 'is_staff', 'is_active')
-    fieldsets = (
-        (None, {'fields': ('username', 'email', 'password', 'role')}),
-        ('Permissions', {'fields': ('is_staff', 'is_active', 'groups', 'user_permissions')}),
-    )
-    add_fieldsets = (
-        (None, {'classes': ('wide',), 'fields': ('username', 'email', 'role', 'password1', 'password2', 'is_staff', 'is_active', 'groups', 'user_permissions')}),
-    )
+    list_display = ('id', 'email', 'username', 'role', 'is_active', 'date_joined')
+    search_fields = ('email', 'username', 'role')
+    list_filter = ('role', 'is_active')
     ordering = ('id',)
-    list_per_page = 10
-
+    list_per_page = 20
