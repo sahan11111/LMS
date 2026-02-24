@@ -1,52 +1,59 @@
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 
-# Admin Permission
+
+def _has_role(user, role_name):
+    """Helper to check user role consistently using both role field and groups."""
+    if not user or not user.is_authenticated:
+        return False
+    return user.role == role_name.lower() or user.groups.filter(name=role_name.capitalize()).exists()
+
+
 class IsAdmin(BasePermission):
-    """
-    Allows access only to Admin group users.
-    """
-    def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.groups.filter(name="Admin").exists()
+    """Allows access only to Admin users."""
 
-# Instructor Permission
+    def has_permission(self, request, view):
+        return _has_role(request.user, 'admin')
+
+
 class IsInstructor(BasePermission):
-    """ Full access for Instructors """
-    def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.groups.filter(name="Instructor").exists() 
+    """Full access for Instructors."""
 
-# Instructor or Read-Only
-class IsInstructorOrReadOnly(BasePermission):
     def has_permission(self, request, view):
-        '''Students & Sponsors can read courses/assessments, but only instructors/admins can modify'''
+        return _has_role(request.user, 'instructor')
+
+
+class IsInstructorOrReadOnly(BasePermission):
+    """Read-only for everyone; write access for Instructors/Admins only."""
+
+    def has_permission(self, request, view):
         if request.method in SAFE_METHODS:
             return True
-        return request.user and request.user.is_authenticated and (
-            request.user.groups.filter(name="Instructor").exists() or
-            request.user.groups.filter(name="Admin").exists()
-        )
+        return _has_role(request.user, 'instructor') or _has_role(request.user, 'admin')
 
     def has_object_permission(self, request, view, obj):
         if request.method in SAFE_METHODS:
             return True
-        if request.user.groups.filter(name="Admin").exists():
+        if _has_role(request.user, 'admin'):
             return True
-        # Instructor can only modify their own courses/assessments
         return hasattr(obj, 'created_by') and obj.created_by == request.user
 
-# Student Permission
+
 class IsStudent(BasePermission):
-    """ Only students can enroll, submit assignments, and view own progress """
-    def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.groups.filter(name="Student").exists() 
+    """Only students can access."""
 
-# Sponsor Permission
+    def has_permission(self, request, view):
+        return _has_role(request.user, 'student')
+
+
 class IsSponsor(BasePermission):
-    """ Only sponsors can create sponsorships and view sponsored students """
-    def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.groups.filter(name="Sponsor").exists() 
+    """Only sponsors can access."""
 
-# Read-Only for everyone
+    def has_permission(self, request, view):
+        return _has_role(request.user, 'sponsor')
+
+
 class ReadOnly(BasePermission):
-    """ Safe methods allowed for any authenticated user """
+    """Safe methods allowed for anyone."""
+
     def has_permission(self, request, view):
         return request.method in SAFE_METHODS

@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual Environment
+venv/
+env/
+.venv/
+
+# Environment Variables
+.env
+.env.*
+
+# Database
+db.sqlite3
+db.sqlite3-journal
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Media uploads
+media/
+lesson_contents/
+
+# Static files (collected)
+staticfiles/
+static_collected/
+
+# Distribution
+dist/
+build/
+*.egg-info/
+
+# Byte-compiled / optimized
+*.pyc
+*.pyo
