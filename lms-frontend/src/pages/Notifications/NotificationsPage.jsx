@@ -25,7 +25,7 @@ const NotificationsPage = () => {
           {notifications.length === 0 && <div className="text-center py-12 text-gray-400">No notifications</div>}
           {notifications.map((n) => (
             <div key={n.id} className={`card p-5 flex items-start gap-4 ${n.is_read ? 'opacity-60' : ''}`}>
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${n.is_read ? 'bg-gray-100' : 'bg-primary-50'}`}>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${n.is_read ? 'bg-gray-100' : 'bg-primary-50'}`}>
                 <HiOutlineBell className={n.is_read ? 'text-gray-400' : 'text-primary-600'} />
               </div>
               <div className="flex-1 min-w-0">

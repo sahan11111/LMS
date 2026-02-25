@@ -27,7 +27,7 @@ const LoginPage = () => {
   return (
     <div className="min-h-screen flex">
       {/* Left panel */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary-600 to-primary-800 items-center justify-center p-12">
+      <div className="hidden lg:flex lg:w-1/2 bg-linear-to-br from-primary-600 to-primary-800 items-center justify-center p-12">
         <div className="max-w-md text-white">
           <HiOutlineAcademicCap className="text-6xl mb-6 opacity-90" />
           <h1 className="text-4xl font-bold mb-4">Learning Management System</h1>
@@ -77,7 +77,7 @@ const LoginPage = () => {
               </select>
             </div>
 
-            <button type="submit" disabled={loading} className="btn-primary w-full !py-3">
+            <button type="submit" disabled={loading} className="btn-primary w-full py-3!">
               {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Sign In'}
             </button>
           </form>

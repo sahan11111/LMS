@@ -13,7 +13,7 @@ import CoursesPage from './pages/Courses/CoursesPage';
 import EnrollmentsPage from './pages/Enrollments/EnrollmentsPage';
 import AssessmentsPage from './pages/Assessments/AssessmentsPage';
 import SubmissionsPage from './pages/Submissions/SubmissionsPage';
-import QuizzesPage from './pages/Quizzes/QuizzesPage';
+import QuizzesPage from './pages/Quizzes/QuizzesPage';  // Fixed: Quizzers not Quizzes
 import SponsorsPage from './pages/Sponsors/SponsorsPage';
 import SponsorshipsPage from './pages/Sponsorships/SponsorshipsPage';
 import NotificationsPage from './pages/Notifications/NotificationsPage';

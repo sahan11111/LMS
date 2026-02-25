@@ -45,7 +45,7 @@ AUTH_USER_MODEL = 'core.User'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
+    'corsheaders.middleware.CorsMiddleware', 
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -143,8 +143,29 @@ AUTHENTICATION_BACKENDS = [
 ]
 
 # CORS (configure as needed for your frontend)
-CORS_ALLOW_ALL_ORIGINS = DEBUG
-CORS_ALLOWED_ORIGINS = []
+CORS_ALLOW_ALL_ORIGINS = False  # Never allow all in production
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",  # React dev server
+    "http://127.0.0.1:3000",
+]
+
+# In production, extend from env
 if not DEBUG:
     cors_origins = os.getenv('CORS_ALLOWED_ORIGINS', '')
-    CORS_ALLOWED_ORIGINS = [o.strip() for o in cors_origins.split(',') if o.strip()]
+    extra = [o.strip() for o in cors_origins.split(',') if o.strip()]
+    CORS_ALLOWED_ORIGINS += extra
+
+CORS_ALLOW_CREDENTIALS = True  # Required if using Token/Authorization headers
+
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "accept-encoding",
+    "authorization",       # ← Critical for token auth!
+    "content-type",
+    "dnt",
+    "origin",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+]
