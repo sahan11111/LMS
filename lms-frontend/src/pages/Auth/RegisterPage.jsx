@@ -44,7 +44,7 @@ const RegisterPage = () => {
             </select></div>
             <div><label className="label">Password</label><input type="password" required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="input-field" placeholder="Min 8 characters" /></div>
             <div><label className="label">Confirm Password</label><input type="password" required value={form.confirm_password} onChange={(e) => setForm({ ...form, confirm_password: e.target.value })} className="input-field" placeholder="••••••••" /></div>
-            <button type="submit" disabled={loading} className="btn-primary w-full !py-3">{loading ? 'Creating...' : 'Create Account'}</button>
+            <button type="submit" disabled={loading} className="btn-primary w-full py-3!">{loading ? 'Creating...' : 'Create Account'}</button>
           </form>
           <p className="text-center text-sm text-gray-500 mt-4">Already have an account? <Link to="/login" className="text-primary-600 font-medium">Sign in</Link></p>
         </div>

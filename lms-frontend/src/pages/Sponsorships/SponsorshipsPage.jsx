@@ -28,8 +28,8 @@ const SponsorshipsPage = () => {
     ...(user?.role === 'sponsor' ? [{
       key: 'actions', label: 'Actions', render: (r) => r.status === 'pending' ? (
         <div className="flex gap-2">
-          <button onClick={() => handleAction(r.id, 'approved')} className="btn-success !py-1 !px-3 !text-xs">Approve</button>
-          <button onClick={() => handleAction(r.id, 'rejected')} className="btn-danger !py-1 !px-3 !text-xs">Reject</button>
+          <button onClick={() => handleAction(r.id, 'approved')} className="btn-success py-1! px-3! text-xs!">Approve</button>
+          <button onClick={() => handleAction(r.id, 'rejected')} className="btn-danger py-1! px-3! text-xs!">Reject</button>
         </div>
       ) : null
     }] : []),

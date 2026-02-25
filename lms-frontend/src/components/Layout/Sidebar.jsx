@@ -59,7 +59,7 @@ const Sidebar = () => {
               ${isActive ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`
             }
           >
-            <item.icon className="text-lg flex-shrink-0" />
+            <item.icon className="text-lg shrink-0" />
             {!collapsed && <span>{item.label}</span>}
           </NavLink>
         ))}
@@ -68,7 +68,7 @@ const Sidebar = () => {
       {/* User */}
       <div className="border-t border-gray-100 p-3">
         <div className={`flex items-center gap-3 px-3 py-2 ${collapsed ? 'justify-center' : ''}`}>
-          <div className="w-9 h-9 bg-primary-100 rounded-full flex items-center justify-center flex-shrink-0">
+          <div className="w-9 h-9 bg-primary-100 rounded-full flex items-center justify-center shrink-0">
             <HiOutlineUser className="text-primary-600" />
           </div>
           {!collapsed && (

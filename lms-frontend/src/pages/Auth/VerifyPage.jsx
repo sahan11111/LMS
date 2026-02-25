@@ -35,7 +35,7 @@ const VerifyPage = () => {
         <form onSubmit={handleSubmit} className="space-y-4 text-left">
           <div><label className="label">Email</label><input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="input-field" /></div>
           <div><label className="label">OTP Code</label><input type="text" required maxLength={6} value={form.otp} onChange={(e) => setForm({ ...form, otp: e.target.value })} className="input-field text-center text-2xl tracking-[0.5em] font-mono" placeholder="••••" /></div>
-          <button type="submit" disabled={loading} className="btn-primary w-full !py-3">{loading ? 'Verifying...' : 'Verify Email'}</button>
+          <button type="submit" disabled={loading} className="btn-primary w-full py-3!">{loading ? 'Verifying...' : 'Verify Email'}</button>
         </form>
         <p className="text-sm text-gray-500 mt-4"><Link to="/login" className="text-primary-600 font-medium">Back to login</Link></p>
       </div>

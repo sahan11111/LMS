@@ -46,14 +46,14 @@ const ForgotPasswordPage = () => {
         {step === 1 ? (
           <form onSubmit={sendOTP} className="space-y-4">
             <div><label className="label">Email</label><input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="input-field" /></div>
-            <button type="submit" disabled={loading} className="btn-primary w-full !py-3">{loading ? 'Sending...' : 'Send OTP'}</button>
+            <button type="submit" disabled={loading} className="btn-primary w-full py-3!">{loading ? 'Sending...' : 'Send OTP'}</button>
           </form>
         ) : (
           <form onSubmit={resetPassword} className="space-y-4">
             <div><label className="label">OTP Code</label><input type="text" required value={form.otp} onChange={(e) => setForm({ ...form, otp: e.target.value })} className="input-field" /></div>
             <div><label className="label">New Password</label><input type="password" required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="input-field" /></div>
             <div><label className="label">Confirm Password</label><input type="password" required value={form.confirm_password} onChange={(e) => setForm({ ...form, confirm_password: e.target.value })} className="input-field" /></div>
-            <button type="submit" disabled={loading} className="btn-primary w-full !py-3">{loading ? 'Resetting...' : 'Reset Password'}</button>
+            <button type="submit" disabled={loading} className="btn-primary w-full py-3!">{loading ? 'Resetting...' : 'Reset Password'}</button>
           </form>
         )}
         <p className="text-center text-sm text-gray-500 mt-4"><Link to="/login" className="text-primary-600 font-medium">Back to login</Link></p>
