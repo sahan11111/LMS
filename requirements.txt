@@ -30,4 +30,4 @@ typing_extensions==4.11.0
 tzdata==2024.1
 uritemplate==4.2.0
 virtualenv==20.26.2
-whitenoise==4.1.2
+whitenoise==6.6.0
