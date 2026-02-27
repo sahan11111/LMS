@@ -17,13 +17,11 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 
 DEBUG = os.getenv("DEBUG", "False") == "True"
 
-if DEBUG:
-    ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
-else:
-    ALLOWED_HOSTS = [
-        ".railway.app",
-        ".up.railway.app",
-    ]
+ALLOWED_HOSTS = [
+    "lms-production-733d.up.railway.app",
+    "localhost",
+    "127.0.0.1",
+]
 
 # Application definition
 INSTALLED_APPS = [
