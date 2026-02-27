@@ -1,15 +1,15 @@
 import api from './axios';
 
 export const quizAPI = {
-  list: (params) => api.get('/Quiz/', { params }),
-  get: (id) => api.get(`/Quiz/${id}/`),
-  create: (data) => api.post('/Quiz/', data),
-  update: (id, data) => api.put(`/Quiz/${id}/`, data),
-  delete: (id) => api.delete(`/Quiz/${id}/`),
+  list: (params) => api.get('api/Quiz/', { params }),
+  get: (id) => api.get(`api/Quiz/${id}/`),
+  create: (data) => api.post('api/Quiz/', data),
+  update: (id, data) => api.put(`api/Quiz/${id}/`, data),
+  delete: (id) => api.delete(`api/Quiz/${id}/`),
 };
 
 export const quizSubmissionAPI = {
-  list: () => api.get('/QuizSubmissions/'),
-  submit: (data) => api.post('/QuizSubmissions/', data),
-  get: (id) => api.get(`/QuizSubmissions/${id}/`),
+  list: () => api.get('api/QuizSubmissions/'),
+  submit: (data) => api.post('api/QuizSubmissions/', data),
+  get: (id) => api.get(`api/QuizSubmissions/${id}/`),
 };

@@ -1,8 +1,8 @@
 import api from './axios';
 
 export const submissionAPI = {
-  list: (params) => api.get('/Submission/', { params }),
-  get: (id) => api.get(`/Submission/${id}/`),
-  create: (data) => api.post('/Submission/', data),
-  grade: (id, data) => api.patch(`/Submission/${id}/grade/`, data),
+  list: (params) => api.get('api/Submission/', { params }),
+  get: (id) => api.get(`api/Submission/${id}/`),
+  create: (data) => api.post('api/Submission/', data),
+  grade: (id, data) => api.patch(`api/Submission/${id}/grade/`, data),
 };

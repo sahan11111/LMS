@@ -2,30 +2,33 @@ import axios from 'axios';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
-/**
- * Read the raw token from localStorage.
- * AuthContext stores the plain token.key string under 'token'.
- * The fallback reads from the 'user' object if for any reason
- * 'token' is missing (e.g. older session data).
- */
 const getStoredToken = () => {
-  const raw = localStorage.getItem('token');
-  if (raw) return raw.trim();
+  let raw = localStorage.getItem('token');
+  if (raw) {
+    if ((raw.startsWith('"') && raw.endsWith('"')) ||
+        (raw.startsWith("'") && raw.endsWith("'"))) {
+      raw = raw.slice(1, -1);
+    }
+    raw = raw.trim();
+    if (raw && raw !== 'undefined' && raw !== 'null') return raw;
+  }
 
   try {
     const user = JSON.parse(localStorage.getItem('user') || '{}');
     const t = user?.token || user?.access || user?.access_token;
-    return t ? String(t).trim() : null;
+    if (t) {
+      const cleaned = String(t).trim();
+      if (cleaned && cleaned !== 'undefined' && cleaned !== 'null') return cleaned;
+    }
   } catch {
-    return null;
+    // corrupt JSON
   }
+  return null;
 };
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  headers: { 'Content-Type': 'application/json' },
 });
 
 // ── Request interceptor — attach token ────────────────────────────────────
@@ -33,7 +36,10 @@ api.interceptors.request.use(
   (config) => {
     const token = getStoredToken();
     if (token) {
-      config.headers['Authorization'] = `Token ${token}`;
+      config.headers = {
+        ...(config.headers || {}),
+        Authorization: `Token ${token}`,
+      };
     }
     return config;
   },
@@ -44,22 +50,23 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const requestUrl   = error.config?.url || '';
-    const status       = error.response?.status;
+    const requestUrl = error.config?.url || '';
+    const status     = error.response?.status;
 
-    // Public endpoints that are ALLOWED to return 401 without redirecting:
-    const publicRoutes = [
+    // Routes that should NEVER trigger a logout redirect on 401
+    const skipLogoutRoutes = [
       '/user/login/',
-      '/user/',              // register
-      '/user/verification/', // OTP verify
+      '/user/',
+      '/user/verification/',
       '/user/send_otp_forgot_password/',
       '/user/update_forgot_password/',
+      '/user/detail/',           // ← ADD THIS — profile fetch after login
     ];
 
-    const isPublicRoute   = publicRoutes.some((route) => requestUrl.includes(route));
-    const isUnauthorized  = status === 401;
+    const shouldSkip    = skipLogoutRoutes.some((r) => requestUrl.includes(r));
+    const isUnauthorized = status === 401;
 
-    if (isUnauthorized && !isPublicRoute) {
+    if (isUnauthorized && !shouldSkip) {
       localStorage.clear();
       window.location.href = '/login';
     }
