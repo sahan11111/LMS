@@ -15,13 +15,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.getenv('SECRET_KEY')
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DEBUG', 'False') == 'True'
+DEBUG = os.getenv("DEBUG", "False") == "True"
 
-ALLOWED_HOSTS = []
-if not DEBUG:
-    allowed = os.getenv('ALLOWED_HOSTS', '')
-    ALLOWED_HOSTS = [h.strip() for h in allowed.split(',') if h.strip()]
+ALLOWED_HOSTS = [
+    "lms-production-733d.up.railway.app",
+    "localhost",
+    "127.0.0.1",
+]
 
 # Application definition
 INSTALLED_APPS = [
