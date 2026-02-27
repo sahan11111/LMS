@@ -18,7 +18,7 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 DEBUG = os.getenv("DEBUG", "False") == "True"
 
 ALLOWED_HOSTS = [
-    "lms-production-733d.up.railway.app",
+    "lms-production-f437.up.railway.app",
     "localhost",
     "127.0.0.1",
 ]
