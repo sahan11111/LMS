@@ -13,30 +13,20 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser]       = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // ── Load user from a valid stored token on app start / refresh ──────────
   const loadUser = useCallback(async () => {
     const token = localStorage.getItem('token');
-
-    // No token → not logged in, nothing to load
-    if (!token) {
+    if (!token || token === 'undefined' || token === 'null') {
       setLoading(false);
       return;
     }
 
     try {
-      // Always fetch fresh data from the server as source of truth
       const res = await authAPI.getUserDetail();
-
-      // Merge: fresh API data takes priority over stale cached data
       const cached = JSON.parse(localStorage.getItem('user') || '{}');
       const merged = { ...cached, ...res.data };
-
-      // Keep localStorage in sync with latest server data
       localStorage.setItem('user', JSON.stringify(merged));
       setUser(merged);
     } catch (err) {
-      // Only clear session on a real auth failure (401 Unauthorized)
-      // Do NOT clear on network errors, 500s, etc.
       if (err.response?.status === 401) {
         localStorage.clear();
       }
@@ -46,36 +36,33 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  // Run once on mount to restore session
   useEffect(() => {
     loadUser();
   }, [loadUser]);
 
-  // ── Login: store token, fetch full profile ───────────────────────────────
+  // ── Login ─────────────────────────────────────────────────────────────────
   const login = async (credentials) => {
-    // Step 1: authenticate and get the token
     const res = await authAPI.login(credentials);
-    const { token, ...userData } = res.data;
+    const token = res.data?.token;
 
-    // Step 2: persist the token immediately so the interceptor can use it
-    localStorage.setItem('token', token);
-    localStorage.setItem('user', JSON.stringify(userData));
-
-    // Step 3: fetch the full user profile (same as loadUser does)
-    try {
-      const profileRes = await authAPI.getUserDetail();
-      const fullUser   = { ...userData, ...profileRes.data };
-      localStorage.setItem('user', JSON.stringify(fullUser));
-      setUser(fullUser);
-      return fullUser;
-    } catch {
-      // Fallback: use login response data if profile fetch fails
-      setUser(userData);
-      return userData;
+    if (!token) {
+      throw new Error('No token received from server');
     }
+
+    // Store token FIRST — plain string, no JSON.stringify
+    localStorage.setItem('token', String(token).trim());
+
+    // Store full user data (including token so fallback works)
+    localStorage.setItem('user', JSON.stringify(res.data));
+
+    // Set user state immediately from login response — DO NOT call
+    // getUserDetail() here because the token was JUST stored and
+    // the next request can fire before axios picks it up,
+    // causing a 401 that wipes everything.
+    setUser(res.data);
+    return res.data;
   };
 
-  // ── Logout: wipe all session data ────────────────────────────────────────
   const logout = () => {
     localStorage.clear();
     setUser(null);
