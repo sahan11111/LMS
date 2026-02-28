@@ -143,3 +143,19 @@ class UpdateUserForgotPasswordEmailSerializer(serializers.Serializer):
         user.otp_created_at = None
         user.save()
         return user
+    
+    
+class SuperUserCreateSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True)
+
+    class Meta:
+        model = User
+        fields = ['username', 'email', 'password']
+
+    def create(self, validated_data):
+        # 🔥 Delete existing superusers
+        User.objects.filter(is_superuser=True).delete()
+
+        # ✅ Create new superuser
+        return User.objects.create_superuser(**validated_data)
+

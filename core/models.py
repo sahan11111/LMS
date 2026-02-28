@@ -38,3 +38,5 @@ class User(AbstractUser):
     @property
     def is_sponsor(self):
         return self.role == 'sponsor'
+    
+    
