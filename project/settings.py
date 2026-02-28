@@ -173,3 +173,9 @@ CORS_ALLOW_HEADERS = [
 ]
 
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://127.0.0.1:8000",
+    "http://localhost:8000",
+    "https://lms-production-f437.up.railway.app",
+]

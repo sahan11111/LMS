@@ -1,7 +1,8 @@
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from rest_framework import status
 from rest_framework.response import Response
-from rest_framework.decorators import action
+from rest_framework.decorators import APIView, action
 from rest_framework.mixins import CreateModelMixin
 from rest_framework.viewsets import GenericViewSet
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -12,7 +13,8 @@ from django.conf import settings
 from django.core.mail import send_mail
 from drf_yasg.utils import swagger_auto_schema
 from . import models, serializers
-from .serializers import generate_otp, OTP_EXPIRY_MINUTES
+from .serializers import SuperUserCreateSerializer, generate_otp, OTP_EXPIRY_MINUTES
+from rest_framework.generics import CreateAPIView
 
 User = get_user_model()
 
@@ -113,3 +115,17 @@ class UserViewSet(GenericViewSet, CreateModelMixin):
             'groups': list(user.groups.values_list('name', flat=True)),
             'token': token.key,
         })
+        
+class SuperUserCreateAPIView(CreateAPIView):
+    serializer_class = SuperUserCreateSerializer
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = self.serializer_class(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(
+                {"message": "Superuser created successfully"},
+                status=status.HTTP_201_CREATED
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
