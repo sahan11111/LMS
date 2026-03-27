@@ -36,7 +36,6 @@ const EnrollmentsPage = () => {
       </div>
     )},
   ];
-
   return (
     <div>
       <PageHeader title="Enrollments" subtitle="View all enrollments" />
